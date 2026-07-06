@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Radar Financeiro</title>
+  <meta name="description" content="Tudo o que voce vai pagar, antes de precisar pagar." />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: '#0b0f1a', panel: '#131a2b', panel2: '#1a2338',
+            line: '#232d47', accent: '#6366f1', accent2: '#22d3ee',
+            good: '#22c55e', warn: '#f59e0b', bad: '#ef4444', muted: '#8b95b0'
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="bg-base text-slate-100 antialiased">
+  <div id="app"></div>
+  <div id="modal-root"></div>
+  <div id="toast-root" class="fixed bottom-6 right-6 z-50 space-y-2"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
