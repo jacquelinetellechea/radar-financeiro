@@ -1,7 +1,9 @@
 /**
  * Camada de dados do Radar Financeiro.
- * Armazenamento em arquivo JSON unico (sem dependencias nativas / sem banco externo).
- * Ideal para uso privado de um unico usuario. Gravacao atomica + backups automaticos.
+ * Backend flexivel:
+ *   - Se existir a variavel de ambiente MONGODB_URI -> grava no MongoDB (permanente).
+ *   - Caso contrario -> grava em arquivo JSON local (./data/radar.json).
+ * Em ambos os casos os dados sao um unico documento JSON (mesmo modelo).
  */
 const fs = require('fs');
 const path = require('path');
@@ -12,86 +14,112 @@ const DATA_FILE = path.join(DATA_DIR, 'radar.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 
 const EMPTY = {
-  user: null,            // { email, passwordHash, createdAt }
+  user: null,
   settings: { currency: 'BRL', theme: 'dark' },
-  cards: [],             // cartoes de credito
-  installments: [],      // compras parceladas no cartao (cada uma gera parcelas)
-  loans: [],             // valores emprestados a terceiros (a receber)
-  recurrings: [],        // contas / receitas recorrentes
-  transactions: [],      // lancamentos avulsos (entradas/saidas pontuais e importados)
+  cards: [],
+  installments: [],
+  loans: [],
+  recurrings: [],
+  transactions: [],
   meta: { createdAt: null, version: 1 }
 };
 
 let cache = null;
+let backend = 'file';
+let mongo = null; // { client, coll }
 
+function fresh() {
+  const c = JSON.parse(JSON.stringify(EMPTY));
+  c.meta.createdAt = new Date().toISOString();
+  return c;
+}
+function normalize(obj) {
+  for (const k of Object.keys(EMPTY)) if (!(k in obj)) obj[k] = JSON.parse(JSON.stringify(EMPTY[k]));
+  return obj;
+}
 function ensureDirs() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 }
-
-function load() {
+function loadFileSync() {
   ensureDirs();
-  if (cache) return cache;
   if (fs.existsSync(DATA_FILE)) {
-    try {
-      cache = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-      // garante que todas as colecoes existem apos upgrades
-      for (const k of Object.keys(EMPTY)) if (!(k in cache)) cache[k] = EMPTY[k];
-    } catch (e) {
-      console.error('Falha ao ler data file, iniciando vazio:', e.message);
-      cache = JSON.parse(JSON.stringify(EMPTY));
-    }
+    try { cache = normalize(JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'))); }
+    catch (e) { console.error('Falha ao ler data file:', e.message); cache = fresh(); }
   } else {
-    cache = JSON.parse(JSON.stringify(EMPTY));
-    cache.meta.createdAt = new Date().toISOString();
-    save();
+    cache = fresh();
+    writeFileNow();
   }
-  return cache;
 }
-
-let saveTimer = null;
-function save() {
+function writeFileNow() {
   ensureDirs();
   const tmp = DATA_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(cache, null, 2));
-  fs.renameSync(tmp, DATA_FILE); // gravacao atomica
+  fs.renameSync(tmp, DATA_FILE);
 }
-
-/** Salva e cria um backup rotativo (mantem os 30 mais recentes). */
-function saveWithBackup() {
-  save();
+function fileBackup() {
   try {
+    ensureDirs();
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     fs.copyFileSync(DATA_FILE, path.join(BACKUP_DIR, `radar-${stamp}.json`));
     const files = fs.readdirSync(BACKUP_DIR).filter(f => f.endsWith('.json')).sort();
-    while (files.length > 30) {
-      const old = files.shift();
-      fs.unlinkSync(path.join(BACKUP_DIR, old));
+    while (files.length > 30) fs.unlinkSync(path.join(BACKUP_DIR, files.shift()));
+  } catch (e) { console.error('Backup falhou:', e.message); }
+}
+
+/** Inicializa o backend. Chamar (await) antes de iniciar o servidor. */
+async function init() {
+  if (process.env.MONGODB_URI) {
+    try {
+      const { MongoClient } = require('mongodb');
+      const client = new MongoClient(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 8000 });
+      await client.connect();
+      const db = client.db(process.env.MONGODB_DB || 'radar_financeiro');
+      const coll = db.collection('data');
+      mongo = { client, coll };
+      backend = 'mongo';
+      const doc = await coll.findOne({ _id: 'radar' });
+      if (doc && doc.data) cache = normalize(doc.data);
+      else { cache = fresh(); await coll.updateOne({ _id: 'radar' }, { $set: { data: cache } }, { upsert: true }); }
+      console.log('  Store: MongoDB conectado (dados permanentes).');
+      return;
+    } catch (e) {
+      console.error('  Store: falha ao conectar no MongoDB, usando arquivo local. Detalhe:', e.message);
+      backend = 'file';
     }
-  } catch (e) {
-    console.error('Backup falhou:', e.message);
   }
+  loadFileSync();
+  console.log('  Store: arquivo local em ' + DATA_FILE);
 }
 
-/** Agenda um backup (debounce) para nao gerar arquivo a cada request. */
-function scheduleBackup() {
-  save();
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveWithBackup(), 5000);
+function getData() { if (!cache) loadFileSync(); return cache; }
+
+function mongoWrite() {
+  if (!mongo) return Promise.resolve();
+  return mongo.coll.updateOne({ _id: 'radar' }, { $set: { data: cache } }, { upsert: true })
+    .catch(e => console.error('Mongo save:', e.message));
 }
 
-function id() {
-  return crypto.randomBytes(9).toString('base64url');
+/** Grava o estado atual (imediato). */
+function persistNow() {
+  if (backend === 'mongo') return mongoWrite();
+  writeFileNow();
+  return Promise.resolve();
 }
 
-function getData() { return load(); }
+// ----- API compativel com o restante do app -----
+function save() { persistNow(); }
+function scheduleBackup() { persistNow(); }           // grava a cada alteracao
+function saveWithBackup() { persistNow(); if (backend === 'file') fileBackup(); }
+function id() { return crypto.randomBytes(9).toString('base64url'); }
 function replaceAll(newData) {
-  cache = Object.assign(JSON.parse(JSON.stringify(EMPTY)), newData);
+  cache = normalize(Object.assign(fresh(), newData));
   saveWithBackup();
   return cache;
 }
 
 module.exports = {
   DATA_DIR, DATA_FILE, BACKUP_DIR,
-  load, save, saveWithBackup, scheduleBackup, id, getData, replaceAll
+  init, getData, save, scheduleBackup, saveWithBackup, id, replaceAll,
+  get backend() { return backend; }
 };

@@ -8,11 +8,14 @@
     "start": "node server/index.js",
     "seed": "node server/seed.js"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.21.0",
     "multer": "^2.0.1",
     "papaparse": "^5.4.1",
     "pdf-parse": "^1.1.1",

@@ -5,14 +5,15 @@ const Papa = require('papaparse');
 const XLSX = require('xlsx');
 
 const CATEGORY_RULES = [
-  { cat: 'Alimentacao', kw: ['ifood', 'restaurante', 'mercado', 'supermerc', 'padaria', 'lanche', 'burger', 'pizza', 'food', 'coffee', 'cafe'] },
-  { cat: 'Transporte', kw: ['uber', '99app', 'posto', 'combustivel', 'gasolina', 'estacion', 'metro', 'onibus', 'shell', 'ipiranga'] },
+  { cat: 'Alimentacao', kw: ['ifood', 'ifd', 'restaurante', 'mercado', 'supermerc', 'padaria', 'lanche', 'burger', 'pizza', 'food', 'coffee', 'cafe', 'zaffari', 'joao'] },
+  { cat: 'Transporte', kw: ['uber', '99app', '99*', '99food', 'posto', 'combustivel', 'gasolina', 'estacion', 'metro', 'onibus', 'shell', 'ipiranga'] },
   { cat: 'Assinaturas', kw: ['netflix', 'spotify', 'amazon prime', 'disney', 'hbo', 'youtube', 'apple.com', 'google', 'prime'] },
-  { cat: 'Saude', kw: ['farmacia', 'drogaria', 'hospital', 'clinica', 'medico', 'consulta', 'plano de saude', 'panvel', 'raia'] },
-  { cat: 'Compras', kw: ['shopping', 'loja', 'magazine', 'magalu', 'americanas', 'mercadolivre', 'aliexpress', 'shein', 'renner', 'riachuelo'] },
+  { cat: 'Saude', kw: ['farmacia', 'drogaria', 'hospital', 'clinica', 'medico', 'consulta', 'plano de saude', 'panvel', 'raia', 'boticario', 'obotic'] },
+  { cat: 'Compras', kw: ['shopping', 'loja', 'magazine', 'magalu', 'americanas', 'mercadolivre', 'aliexpress', 'shein', 'renner', 'riachuelo', 'loja7'] },
   { cat: 'Moradia', kw: ['aluguel', 'condominio', 'energia', 'luz', 'agua', 'internet', 'vivo', 'claro', 'tim', 'net'] },
   { cat: 'Educacao', kw: ['escola', 'faculdade', 'curso', 'udemy', 'alura'] },
-  { cat: 'Lazer', kw: ['cinema', 'viagem', 'hotel', 'airbnb', 'ingresso'] }
+  { cat: 'Lazer', kw: ['cinema', 'viagem', 'hotel', 'airbnb', 'ingresso'] },
+  { cat: 'Tarifas', kw: ['anuidade', 'seguro', 'segcartao', 'envio mens', 'tarifa'] }
 ];
 
 function guessCategory(desc) {
@@ -48,12 +49,12 @@ function parseDate(v) {
   return null;
 }
 
+/** Detecta parcela: "3/10", "02/03", "Parcela 3 de 10". Ignora casos improvaveis. */
 function detectInstallment(desc) {
-  const d = (desc || '');
-  let m = d.match(/(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/i);
+  const m = (desc || '').match(/(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/i);
   if (m) {
     const cur = parseInt(m[1], 10), tot = parseInt(m[2], 10);
-    if (tot > 1 && cur >= 1 && cur <= tot) return { current: cur, total: tot };
+    if (tot > 1 && tot <= 48 && cur >= 1 && cur <= tot) return { current: cur, total: tot };
   }
   return null;
 }
@@ -104,61 +105,80 @@ function parseExcel(buffer) {
   return normalizeRows(rows);
 }
 
-const SEC_FUTURE = /(pr[oó]ximas faturas|parcel.+pr[oó]xim)/i;
-const SEC_TX = /(lan[çc]amentos?[:\s].*(compra|saque|cart)|compras e saques|compras parceladas|d[ée]bitos e cr[ée]ditos|gastos do periodo|movimenta)/i;
-const SEC_STOP = /(limites de cr[eé]dito|encargos cobrados|resumo da fatura|pagamentos efetuados|novo teto|simula[çc]|previs.+fechamento|dados para|composi)/i;
-const NOISE = /(^total|total d|limite|saldo|m[ií]nimo|encargos?|juros|multa|\biof\b|pr[oó]xima fatura|demais faturas|dispon[ií]vel|utilizado|anuidade|estorno de|^subtotal)/i;
+// Linhas que NAO sao compras (resumos, totais, encargos, pagamentos da fatura).
+const NOISE = /(pagamento|^total|total d|limite|saldo|m[ií]nimo|encargos|juros|multa|\biof\b|pr[oó]xima fatura|demais faturas|dispon[ií]vel|utilizado|estorno|subtotal|lan[çc]amento|\bcet\b|valor total financiado|valor solicitado)/i;
+
+/**
+ * PDF de fatura (assistido). Detecta compras pelo padrao "DD/MM ... valor",
+ * independente da ordem/secoes do PDF. Colapsa parcelas repetidas da mesma compra.
+ */
+/** Separa descricao + parcela (CC/TT, possivelmente grudada no valor) + valor. */
+function splitDescInstAmount(rest) {
+  // 1) parcela CC/TT grudada logo antes do valor: ...DESC CC/TT VALOR
+  let m = rest.match(/^(.*?)(\d{1,2})\/(\d{1,2})(\d{1,3}(?:\.\d{3})*,\d{2})$/);
+  if (m) {
+    const cur = parseInt(m[2], 10), tot = parseInt(m[3], 10);
+    if (tot > 1 && tot <= 48 && cur >= 1 && cur <= tot) {
+      return { desc: m[1], installment: { current: cur, total: tot }, amount: parseAmount(m[4]) };
+    }
+  }
+  // 2) valor no fim; parcela (se houver) separada por espaco na descricao
+  m = rest.match(/^(.*?)(-?\d{1,3}(?:\.\d{3})*,\d{2})$/);
+  if (m) {
+    const inst = detectInstallment(m[1]);
+    return { desc: inst ? cleanDesc(m[1]) : m[1], installment: inst, amount: parseAmount(m[2]) };
+  }
+  return null;
+}
 
 async function parsePDF(buffer) {
   const pdfParse = require('pdf-parse');
   const data = await pdfParse(buffer);
   const lines = data.text.split('\n').map(l => l.trim()).filter(Boolean);
 
+  // ano/mes de referencia (a partir da 1a data completa: vencimento/fechamento)
   let refYear = new Date().getFullYear(), refMonth = new Date().getMonth() + 1;
   const full = data.text.match(/(\d{2})\/(\d{2})\/(\d{4})/);
   if (full) { refMonth = parseInt(full[2], 10); refYear = parseInt(full[3], 10); }
-  const dueISO = full ? `${full[3]}-${full[2]}-${full[1]}` : new Date().toISOString().slice(0, 10);
-  const futureDate = (() => { const d = new Date(dueISO); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 10); })();
 
-  let section = null;
-  const items = [];
-  const seen = new Set();
-
+  const raw = [];
   for (const line of lines) {
-    if (SEC_STOP.test(line)) { section = null; continue; }
-    if (SEC_FUTURE.test(line)) { section = 'future'; continue; }
-    if (SEC_TX.test(line)) { section = 'tx'; continue; }
-    if (!section) continue;
     if (NOISE.test(line)) continue;
-
-    const m = line.match(/^(\d{2})\/(\d{2})\s*(.+?)\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/);
-    if (!m) continue;
-    let rawDesc = m[3].replace(/\s{2,}/g, ' ').trim();
-    if (!/[a-zA-Z]/.test(rawDesc)) continue;
-    const amount = parseAmount(m[4]);
+    const head = line.match(/^(\d{2})\/(\d{2})\s*(.+)$/);
+    if (!head) continue;
+    const parsed = splitDescInstAmount(head[3].trim());
+    if (!parsed) continue;
+    let desc = parsed.desc.replace(/\s{2,}/g, ' ').trim();
+    if (desc.replace(/[^a-zA-Z]/g, '').length < 3) continue; // precisa ter nome real
+    const amount = parsed.amount;
     if (isNaN(amount) || amount === 0) continue;
-
-    const dd = m[1], mm = m[2];
+    const dd = head[1], mm = head[2];
     let year = refYear;
-    if (parseInt(mm, 10) > refMonth) year = refYear - 1;
-    const date = section === 'future' ? futureDate : `${year}-${mm}-${dd}`;
-    const inst = detectInstallment(rawDesc);
-
-    const key = date + '|' + rawDesc + '|' + amount;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    items.push({
-      date,
-      description: cleanDesc(rawDesc) || rawDesc,
-      amount: Math.abs(amount),
-      isIncome: amount < 0,
-      installment: inst,
-      category: guessCategory(rawDesc),
-      future: section === 'future'
-    });
+    if (parseInt(mm, 10) > refMonth) year = refYear - 1; // compra do ano anterior
+    raw.push({ date: `${year}-${mm}-${dd}`, rawDesc: desc, amount: Math.abs(amount), isIncome: amount < 0, installment: parsed.installment });
   }
-  return items;
+
+  // colapsa parcelas repetidas da mesma compra: mantem a de menor "current"
+  const byKey = {};
+  const out = [];
+  for (const r of raw) {
+    if (r.installment) {
+      const k = cleanDesc(r.rawDesc).toLowerCase().replace(/[^a-z0-9]/g, '') + '|' + r.amount.toFixed(2) + '|' + r.installment.total;
+      if (!byKey[k] || r.installment.current < byKey[k].installment.current) byKey[k] = r;
+    } else {
+      out.push(r);
+    }
+  }
+  Object.values(byKey).forEach(r => out.push(r));
+
+  return out.map(r => ({
+    date: r.date,
+    description: cleanDesc(r.rawDesc) || r.rawDesc,
+    amount: r.amount,
+    isIncome: r.isIncome,
+    installment: r.installment,
+    category: guessCategory(r.rawDesc)
+  }));
 }
 
 module.exports = { parseCSV, parseExcel, parsePDF, guessCategory };

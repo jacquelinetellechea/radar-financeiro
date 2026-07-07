@@ -434,15 +434,27 @@ app.post('/api/import/commit', (req, res) => {
   for (const it of items) {
     if (it.skip) continue;
     if (card && it.type !== 'income') {
-      // cada linha importada vira uma compra unica (1x) no mes correto
-      const amount = Number(it.amount);
-      const gen = fin.generateCardInstallments(it.date, card.closingDay, card.dueDay, amount, 1);
-      const label = it.installment ? it.description + ' (' + it.installment.current + '/' + it.installment.total + ')' : it.description;
-      d.installments.push({
-        id: store.id(), cardId, description: label, category: it.category || 'Outros',
-        purchaseDate: it.date, totalAmount: amount, numInstallments: 1, items: gen,
-        source: 'import', createdAt: new Date().toISOString()
-      });
+      if (it.installment && it.installment.total > 1) {
+        // reconstroi o cronograma completo da parcela detectada (ex: 3/10)
+        const n = it.installment.total;
+        const total = Math.round(Number(it.amount) * n * 100) / 100;
+        const gen = fin.generateCardInstallments(it.date, card.closingDay, card.dueDay, total, n);
+        const today = new Date().toISOString().slice(0, 10);
+        gen.forEach(g => { if (g.number < it.installment.current) { g.paid = true; g.paidDate = today; } });
+        d.installments.push({
+          id: store.id(), cardId, description: it.description, category: it.category || 'Outros',
+          purchaseDate: it.date, totalAmount: total, numInstallments: n, items: gen,
+          source: 'import', createdAt: new Date().toISOString()
+        });
+      } else {
+        const amount = Number(it.amount);
+        const gen = fin.generateCardInstallments(it.date, card.closingDay, card.dueDay, amount, 1);
+        d.installments.push({
+          id: store.id(), cardId, description: it.description, category: it.category || 'Outros',
+          purchaseDate: it.date, totalAmount: amount, numInstallments: 1, items: gen,
+          source: 'import', createdAt: new Date().toISOString()
+        });
+      }
     } else {
       d.transactions.push({
         id: store.id(), type: it.type === 'income' ? 'income' : 'expense',
@@ -483,7 +495,9 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(PUBLIC, 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`\n  Radar Financeiro rodando em http://localhost:${PORT}`);
-  console.log(`  Dados em: ${store.DATA_FILE}\n`);
-});
+store.init().then(() => {
+  app.listen(PORT, () => {
+    console.log(`\n  Radar Financeiro rodando em http://localhost:${PORT}`);
+    console.log(`  Backend de dados: ${store.backend === 'mongo' ? 'MongoDB (permanente)' : store.DATA_FILE}\n`);
+  });
+}).catch(e => { console.error('Falha ao iniciar o store:', e); process.exit(1); });
