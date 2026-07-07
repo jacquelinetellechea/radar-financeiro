@@ -23,6 +23,7 @@
   const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   const MESF = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   function mesLabel(mk) { const [y, m] = mk.split('-'); return MES[+m - 1] + '/' + y.slice(2); }
+  function mesLabelFull4(mk) { const [y, m] = mk.split('-'); return MES[+m - 1] + '/' + y; }
   function mesLabelFull(mk) { const [y, m] = mk.split('-'); return MESF[+m - 1] + ' de ' + y; }
   const $ = sel => document.querySelector(sel);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -379,6 +380,7 @@
   function instDetail(i) {
     const rows = i.items.map(it => `<tr>
       <td>${it.number}</td>
+      <td><span class="chip">${mesLabelFull4(it.dueISO.slice(0,7))}</span></td>
       <td><input class="input" style="width:135px" type="date" data-f="dueISO" data-n="${it.number}" value="${it.dueISO}"/></td>
       <td><input class="input" style="width:95px" type="number" step="0.01" data-f="amount" data-n="${it.number}" value="${it.amount}"/></td>
       <td><input class="input" style="width:95px" type="number" step="0.01" min="0" data-f="reimburseAmount" data-n="${it.number}" value="${it.reimburseAmount || 0}"/></td>
@@ -391,7 +393,7 @@
         <input class="input" id="inst-person" placeholder="Ex: Minha mae" value="${esc(i.reimbursePerson || '')}"/>
         <p class="text-xs text-muted mt-1">Em "Parte de terceiro", coloque quanto a outra pessoa te devolve em cada parcela. O restante e a sua despesa. Voce tambem pode editar o valor e o vencimento de cada parcela.</p>
       </div>
-      <div class="max-h-80 overflow-auto"><table><thead><tr><th>#</th><th>Vencimento</th><th>Valor</th><th>Parte de terceiro</th><th>Paga</th><th>Recebido</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="max-h-80 overflow-auto"><table><thead><tr><th>#</th><th>Mês</th><th>Vencimento</th><th>Valor</th><th>Parte de terceiro</th><th>Paga</th><th>Recebido</th></tr></thead><tbody>${rows}</tbody></table></div>
       <div class="flex justify-end gap-2 mt-4"><button class="btn btn-ghost" id="inst-cancel">Fechar</button><button class="btn btn-primary" id="inst-save">Salvar alteracoes</button></div>
     `, { wide: true });
     $('#inst-cancel').addEventListener('click', closeModal);
@@ -539,7 +541,7 @@
       <div class="card overflow-hidden">
         <table><thead><tr><th>Mes</th><th>Entradas</th><th>Saidas</th><th>Faturas</th><th>Saldo mes</th><th>Saldo acumulado</th></tr></thead>
         <tbody>${proj.map(p => `<tr class="${p.risk ? 'bg-bad/5' : ''}">
-          <td><b>${mesLabel(p.month)}</b></td><td class="text-good">${brl(p.income)}</td>
+          <td><b>${mesLabelFull4(p.month)}</b></td><td class="text-good">${brl(p.income)}</td>
           <td class="text-bad">${brl(p.expense)}</td><td>${brl(p.cardsInvoice)}</td>
           <td class="${p.net >= 0 ? 'text-good' : 'text-bad'}">${brl(p.net)}</td>
           <td class="${p.balance >= 0 ? 'text-good' : 'text-bad'}"><b>${brl(p.balance)}</b> ${p.risk ? '<span class="badge bg-bad/20 text-red-300 ml-1">risco</span>' : ''}</td>
