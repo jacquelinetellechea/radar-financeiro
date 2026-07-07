@@ -371,13 +371,13 @@ app.post('/api/import/commit', (req, res) => {
   for (const it of items) {
     if (it.skip) continue;
     if (card && it.type !== 'income') {
-      // vira compra no cartao (parcelada se detectado)
-      const total = it.installment ? Number(it.amount) * it.installment.total : Number(it.amount);
-      const n = it.installment ? it.installment.total : 1;
-      const gen = fin.generateCardInstallments(it.date, card.closingDay, card.dueDay, total, n);
+      // cada linha importada vira uma compra unica (1x) no mes correto
+      const amount = Number(it.amount);
+      const gen = fin.generateCardInstallments(it.date, card.closingDay, card.dueDay, amount, 1);
+      const label = it.installment ? it.description + ' (' + it.installment.current + '/' + it.installment.total + ')' : it.description;
       d.installments.push({
-        id: store.id(), cardId, description: it.description, category: it.category || 'Outros',
-        purchaseDate: it.date, totalAmount: total, numInstallments: n, items: gen,
+        id: store.id(), cardId, description: label, category: it.category || 'Outros',
+        purchaseDate: it.date, totalAmount: amount, numInstallments: 1, items: gen,
         source: 'import', createdAt: new Date().toISOString()
       });
     } else {
