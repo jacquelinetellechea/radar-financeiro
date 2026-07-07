@@ -222,7 +222,7 @@
         ${statCard('Proximas faturas', brl(d.nextInvoicesTotal), 'total cartoes')}
         ${statCard('Comprometido futuro', brl(d.totalCommittedFuture), 'em parcelas')}
         ${statCard('A receber de terceiros', brl(d.loansPending), 'pendente', 'text-accent2')}
-        ${statCard('Cartoes ativos', d.cards.length, 'cadastrados')}
+        ${statCard('Despesa liquida do mes', brl(d.cardsInvoiceNetMonth), 'fatura - reembolsos')}
       </div>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div class="card p-5 lg:col-span-2">
@@ -342,7 +342,7 @@
     $('#content').innerHTML = pageHeader('Parcelamentos Inteligentes', 'Cadastre uma compra e o sistema gera todas as parcelas futuras',
       `<button class="btn btn-primary" id="add">+ Nova compra parcelada</button>`) + `
       <div class="card overflow-hidden">
-        <table><thead><tr><th>Descricao</th><th>Cartao</th><th>Categoria</th><th>Total</th><th>Parcelas</th><th>Pagas</th><th>Restante</th><th></th></tr></thead>
+        <table><thead><tr><th>Descricao</th><th>Cartao</th><th>Categoria</th><th>Total</th><th>Terceiros</th><th>Parcelas</th><th>Restante</th><th></th></tr></thead>
         <tbody>${insts.length ? insts.map(instRow).join('') : `<tr><td colspan="8" class="text-muted text-center py-8">Nenhuma compra parcelada.</td></tr>`}</tbody></table>
       </div>`;
     $('#add').addEventListener('click', () => instForm(cards));
@@ -352,12 +352,15 @@
   function instRow(i) {
     const paid = i.items.filter(x => x.paid).length;
     const restante = i.items.filter(x => !x.paid).reduce((s, x) => s + x.amount, 0);
+    const terceiros = i.items.reduce((s, x) => s + (x.reimburseAmount || 0), 0);
     return `<tr>
-      <td><b>${esc(i.description)}</b></td><td>${esc(i.cardName)}</td>
+      <td><b>${esc(i.description)}</b>${i.reimbursePerson ? `<div class="text-xs text-accent2">↩ ${esc(i.reimbursePerson)}</div>` : ''}</td>
+      <td>${esc(i.cardName)}</td>
       <td><span class="chip">${esc(i.category)}</span></td>
-      <td>${brl(i.totalAmount)}</td><td>${i.numInstallments}x</td>
+      <td>${brl(i.totalAmount)}</td>
+      <td>${terceiros > 0 ? `<span class="text-accent2">${brl(terceiros)}</span><div class="text-[10px] text-muted">minha: ${brl(i.totalAmount - terceiros)}</div>` : '<span class="text-muted">—</span>'}</td>
       <td>${paid}/${i.numInstallments}</td><td class="text-bad">${brl(restante)}</td>
-      <td class="text-right whitespace-nowrap"><button class="chip" data-view="${i.id}">Ver</button> <button class="chip" data-del="${i.id}">🗑️</button></td>
+      <td class="text-right whitespace-nowrap"><button class="chip" data-view="${i.id}">Editar</button> <button class="chip" data-del="${i.id}">🗑️</button></td>
     </tr>`;
   }
   function instForm(cards) {
@@ -369,14 +372,40 @@
       { name: 'totalAmount', label: 'Valor total (R$)', type: 'number', step: '0.01', required: true },
       { name: 'numInstallments', label: 'Numero de parcelas', type: 'number', min: 1, value: 1, required: true },
       { name: 'purchaseDate', label: 'Data da compra', type: 'date', value: new Date().toISOString().slice(0, 10) },
+      { name: 'reimbursePerson', label: 'Terceiro reembolsa? (opcional)', placeholder: 'Ex: Minha mae' },
+      { name: 'reimburseTotal', label: 'Valor total que o terceiro deve (opcional)', type: 'number', step: '0.01' },
     ], async v => { await api('POST', '/installments', v); closeModal(); toast('Parcelas geradas automaticamente', 'ok'); go('parcelas'); });
   }
   function instDetail(i) {
-    openModal(`Parcelas: ${i.description}`, `<div class="max-h-96 overflow-auto"><table><thead><tr><th>#</th><th>Vencimento</th><th>Mes fatura</th><th>Valor</th><th>Status</th></tr></thead><tbody>
-      ${i.items.map(it => `<tr><td>${it.number}</td><td>${it.dueISO.split('-').reverse().join('/')}</td><td>${mesLabel(it.month)}</td><td>${brl(it.amount)}</td>
-        <td><button class="badge ${it.paid ? 'bg-good/20 text-green-300' : 'bg-panel2 text-muted'}" data-pay="${it.number}">${it.paid ? '✓ Paga' : 'Marcar paga'}</button></td></tr>`).join('')}
-    </tbody></table></div>`, { wide: true });
-    document.querySelectorAll('[data-pay]').forEach(b => b.addEventListener('click', async () => { await api('POST', `/installments/${i.id}/pay/${b.dataset.pay}`); closeModal(); toast('Atualizado', 'ok'); go('parcelas'); }));
+    const rows = i.items.map(it => `<tr>
+      <td>${it.number}</td>
+      <td><input class="input" style="width:135px" type="date" data-f="dueISO" data-n="${it.number}" value="${it.dueISO}"/></td>
+      <td><input class="input" style="width:95px" type="number" step="0.01" data-f="amount" data-n="${it.number}" value="${it.amount}"/></td>
+      <td><input class="input" style="width:95px" type="number" step="0.01" min="0" data-f="reimburseAmount" data-n="${it.number}" value="${it.reimburseAmount || 0}"/></td>
+      <td class="text-center"><input type="checkbox" data-f="paid" data-n="${it.number}" ${it.paid ? 'checked' : ''}/></td>
+      <td class="text-center"><input type="checkbox" data-f="reimburseReceived" data-n="${it.number}" ${it.reimburseReceived ? 'checked' : ''}/></td>
+    </tr>`).join('');
+    openModal(`Editar parcelas: ${i.description}`, `
+      <div class="mb-3">
+        <label class="label">Quem reembolsa parte desta compra? (opcional)</label>
+        <input class="input" id="inst-person" placeholder="Ex: Minha mae" value="${esc(i.reimbursePerson || '')}"/>
+        <p class="text-xs text-muted mt-1">Em "Parte de terceiro", coloque quanto a outra pessoa te devolve em cada parcela. O restante e a sua despesa. Voce tambem pode editar o valor e o vencimento de cada parcela.</p>
+      </div>
+      <div class="max-h-80 overflow-auto"><table><thead><tr><th>#</th><th>Vencimento</th><th>Valor</th><th>Parte de terceiro</th><th>Paga</th><th>Recebido</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="flex justify-end gap-2 mt-4"><button class="btn btn-ghost" id="inst-cancel">Fechar</button><button class="btn btn-primary" id="inst-save">Salvar alteracoes</button></div>
+    `, { wide: true });
+    $('#inst-cancel').addEventListener('click', closeModal);
+    $('#inst-save').addEventListener('click', async () => {
+      const map = {};
+      document.querySelectorAll('[data-n]').forEach(el => {
+        const n = el.dataset.n; map[n] = map[n] || { number: Number(n) };
+        map[n][el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value;
+      });
+      try {
+        await api('PUT', `/installments/${i.id}/items`, { reimbursePerson: $('#inst-person').value, items: Object.values(map) });
+        closeModal(); toast('Parcelas atualizadas', 'ok'); go('parcelas');
+      } catch (e) { toast(e.message, 'err'); }
+    });
   }
 
   // ---- Emprestimos ----
@@ -432,24 +461,25 @@
 
   // ---- Valores a Receber ----
   PAGES.receber = async function () {
-    const loans = await api('GET', '/loans');
-    const totalPend = loans.reduce((s, l) => s + l.pending, 0);
-    const totalRec = loans.reduce((s, l) => s + l.received, 0);
-    const totalOver = loans.reduce((s, l) => s + l.overdue, 0);
-    $('#content').innerHTML = pageHeader('Valores a Receber', 'Painel de devedores e reembolsos') + `
+    const items = await api('GET', '/receivables');
+    const totalPend = items.reduce((s, l) => s + l.pending, 0);
+    const totalRec = items.reduce((s, l) => s + l.received, 0);
+    const totalOver = items.reduce((s, l) => s + l.overdue, 0);
+    $('#content').innerHTML = pageHeader('Valores a Receber', 'Emprestimos e reembolsos de compras (parte de terceiros)') + `
       <div class="grid grid-cols-3 gap-4 mb-6">
         ${statCard('Total pendente', brl(totalPend), null, 'text-warn')}
         ${statCard('Ja recebido', brl(totalRec), null, 'text-good')}
         ${statCard('Em atraso', brl(totalOver), null, 'text-bad')}
       </div>
       <div class="card overflow-hidden">
-        <table><thead><tr><th>Devedor</th><th>Descricao</th><th>Total</th><th>Recebido</th><th>Pendente</th><th>Proximo venc.</th><th>Status</th></tr></thead>
-        <tbody>${loans.length ? loans.map(l => `<tr>
-          <td><b>${esc(l.person)}</b></td><td>${esc(l.description)}</td><td>${brl(l.total)}</td>
-          <td class="text-good">${brl(l.received)}</td><td class="text-warn">${brl(l.pending)}</td>
+        <table><thead><tr><th>Pessoa</th><th>Descricao</th><th>Origem</th><th>Total</th><th>Recebido</th><th>Pendente</th><th>Proximo venc.</th><th>Status</th></tr></thead>
+        <tbody>${items.length ? items.map(l => `<tr>
+          <td><b>${esc(l.person)}</b></td><td>${esc(l.description)}</td>
+          <td><span class="chip">${l.source === 'installment' ? 'Cartao/parcela' : 'Emprestimo'}</span></td>
+          <td>${brl(l.total)}</td><td class="text-good">${brl(l.received)}</td><td class="text-warn">${brl(l.pending)}</td>
           <td>${l.nextDue ? l.nextDue.split('-').reverse().join('/') : '—'}</td>
           <td>${l.overdue > 0 ? '<span class="badge bg-bad/20 text-red-300">Atrasado</span>' : l.pending === 0 ? '<span class="badge bg-good/20 text-green-300">Quitado</span>' : '<span class="badge bg-panel2 text-muted">Em dia</span>'}</td>
-        </tr>`).join('') : `<tr><td colspan="7" class="text-center text-muted py-8">Nenhum valor a receber.</td></tr>`}</tbody></table>
+        </tr>`).join('') : `<tr><td colspan="8" class="text-center text-muted py-8">Nenhum valor a receber.</td></tr>`}</tbody></table>
       </div>`;
   };
 
@@ -583,18 +613,19 @@
   };
   function renderImportPreview(res, cardId) {
     if (!res.items.length) { $('#imp-result').innerHTML = '<div class="card p-4 text-muted">Nenhum lancamento detectado no arquivo.</div>'; return; }
-    window._imp = res.items.map(i => ({ ...i, skip: false, type: i.isIncome ? 'income' : 'expense' }));
+    window._imp = res.items.map(i => ({ ...i, skip: !!i.duplicate, type: i.isIncome ? 'income' : 'expense' }));
+    const dups = window._imp.filter(i => i.duplicate).length;
     $('#imp-result').innerHTML = `
       <div class="card p-5">
         <div class="flex justify-between items-center mb-3">
-          <h3 class="font-semibold">${res.count} lancamentos detectados em ${esc(res.filename)}</h3>
+          <h3 class="font-semibold">${res.count} lancamentos detectados em ${esc(res.filename)}${dups ? ` · <span class="text-warn">${dups} ja cadastrado(s), desmarcados</span>` : ''}</h3>
           <button class="btn btn-primary" id="imp-commit">Confirmar e salvar</button>
         </div>
         <div class="max-h-96 overflow-auto"><table><thead><tr><th>Incluir</th><th>Data</th><th>Descricao</th><th>Categoria</th><th>Parcelas</th><th>Valor</th></tr></thead>
-        <tbody>${window._imp.map((it, idx) => `<tr>
-          <td><input type="checkbox" data-skip="${idx}" checked/></td>
+        <tbody>${window._imp.map((it, idx) => `<tr class="${it.duplicate ? 'opacity-60' : ''}">
+          <td><input type="checkbox" data-skip="${idx}" ${it.skip ? '' : 'checked'}/></td>
           <td>${it.date.split('-').reverse().join('/')}</td>
-          <td>${esc(it.description)}</td><td><span class="chip">${esc(it.category)}</span></td>
+          <td>${esc(it.description)} ${it.duplicate ? '<span class="badge bg-warn/20 text-amber-300">ja cadastrado</span>' : ''}</td><td><span class="chip">${esc(it.category)}</span></td>
           <td>${it.installment ? it.installment.current + '/' + it.installment.total : '1x'}</td>
           <td class="${it.type === 'income' ? 'text-good' : ''}">${brl(it.amount)}</td>
         </tr>`).join('')}</tbody></table></div>

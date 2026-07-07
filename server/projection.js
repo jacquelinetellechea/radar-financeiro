@@ -65,7 +65,11 @@ function monthlyProjection(data, count = 12, startKey = currentMonthKey()) {
     for (const l of data.loans) {
       for (const it of l.items) if (it.month === mk) loansToReceive += it.amount;
     }
-    const income = round2(recurringIncome + oneoffIncome + loansToReceive);
+    let reimbursements = 0;
+    for (const inst of data.installments) {
+      for (const it of inst.items) if (it.month === mk) reimbursements += (it.reimburseAmount || 0);
+    }
+    const income = round2(recurringIncome + oneoffIncome + loansToReceive + reimbursements);
     const expense = round2(recurringExpense + oneoffExpense + cardsInvoice);
     const net = round2(income - expense);
     running = round2(running + net);
@@ -76,6 +80,8 @@ function monthlyProjection(data, count = 12, startKey = currentMonthKey()) {
       oneoffIncome: round2(oneoffIncome),
       oneoffExpense: round2(oneoffExpense),
       cardsInvoice,
+      reimbursements: round2(reimbursements),
+      cardsInvoiceNet: round2(cardsInvoice - reimbursements),
       loansToReceive: round2(loansToReceive),
       income, expense, net,
       balance: running,
@@ -179,9 +185,9 @@ function dashboard(data) {
   const proj = monthlyProjection(data, 12);
   const thisMonth = proj[0];
   const cards = cardsStatus(data);
-  const loans = loansStatus(data);
+  const recv = receivables(data);
   const totalCommittedFuture = round2(cards.reduce((s, c) => s + c.committed, 0));
-  const loansPending = round2(loans.reduce((s, l) => s + l.pending, 0));
+  const loansPending = round2(recv.reduce((s, r) => s + r.pending, 0));
   const nextInvoicesTotal = round2(cards.reduce((s, c) => s + c.nextInvoice, 0));
   return {
     currentBalance: Number(data.settings.currentBalance || 0),
@@ -192,6 +198,8 @@ function dashboard(data) {
     nextInvoicesTotal,
     totalCommittedFuture,
     loansPending,
+    reimbursementsMonth: thisMonth ? thisMonth.reimbursements : 0,
+    cardsInvoiceNetMonth: thisMonth ? thisMonth.cardsInvoiceNet : 0,
     cards,
     alerts: buildAlerts(data),
     projection: proj
@@ -251,7 +259,36 @@ function reports(data, months = 6) {
   };
 }
 
+/** Consolida tudo que o usuario tem a receber: emprestimos + reembolsos de parcelas. */
+function receivables(data) {
+  const today = new Date().toISOString().slice(0, 10);
+  const out = [];
+  for (const l of loansStatus(data)) {
+    out.push({ source: 'loan', id: l.id, person: l.person, description: l.description,
+      total: l.total, received: l.received, pending: l.pending, overdue: l.overdue, nextDue: l.nextDue });
+  }
+  for (const inst of data.installments) {
+    if (!inst.reimbursePerson) continue;
+    const items = inst.items.filter(it => (it.reimburseAmount || 0) > 0);
+    if (!items.length) continue;
+    let total = 0, received = 0, pending = 0, overdue = 0, nextDue = null;
+    for (const it of items) {
+      total += it.reimburseAmount;
+      if (it.reimburseReceived) received += it.reimburseAmount;
+      else {
+        pending += it.reimburseAmount;
+        if (it.dueISO < today) overdue += it.reimburseAmount;
+        if (!nextDue || it.dueISO < nextDue) nextDue = it.dueISO;
+      }
+    }
+    out.push({ source: 'installment', id: inst.id, person: inst.reimbursePerson,
+      description: inst.description, total: round2(total), received: round2(received),
+      pending: round2(pending), overdue: round2(overdue), nextDue, cardLinked: true });
+  }
+  return out;
+}
+
 module.exports = {
   currentMonthKey, rangeMonths, monthlyProjection, cardsStatus,
-  loansStatus, dashboard, reports, buildAlerts, round2, cardInvoiceForMonth
+  loansStatus, receivables, dashboard, reports, buildAlerts, round2, cardInvoiceForMonth
 };

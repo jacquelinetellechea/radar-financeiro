@@ -155,10 +155,16 @@ app.post('/api/installments', (req, res) => {
     purchaseDate || new Date().toISOString().slice(0, 10),
     card.closingDay, card.dueDay, Number(totalAmount), Number(numInstallments)
   );
+  const { reimbursePerson, reimburseTotal } = req.body || {};
+  if (reimbursePerson && Number(reimburseTotal) > 0) {
+    const shares = fin.splitAmount(Number(reimburseTotal), items.length);
+    items.forEach((it, i) => { it.reimburseAmount = shares[i]; it.reimburseReceived = false; });
+  }
   const inst = {
     id: store.id(), cardId, description: description || 'Compra',
     category: category || 'Outros', purchaseDate: purchaseDate || new Date().toISOString().slice(0, 10),
     totalAmount: Number(totalAmount), numInstallments: Number(numInstallments),
+    reimbursePerson: reimbursePerson || null,
     items, createdAt: new Date().toISOString()
   };
   d.installments.push(inst);
@@ -183,8 +189,54 @@ app.post('/api/installments/:id/pay/:number', (req, res) => {
   ok(res, inst);
 });
 
+// editar compra parcelada (descricao, categoria, quem reembolsa)
+app.put('/api/installments/:id', (req, res) => {
+  const d = store.getData();
+  const inst = d.installments.find(i => i.id === req.params.id);
+  if (!inst) return bad(res, 'Nao encontrado', 404);
+  const b = req.body || {};
+  if (b.description != null) inst.description = b.description;
+  if (b.category != null) inst.category = b.category;
+  if (b.reimbursePerson !== undefined) inst.reimbursePerson = b.reimbursePerson || null;
+  store.scheduleBackup();
+  ok(res, inst);
+});
+// editar parcelas individualmente (valor, vencimento, parte de terceiro) em lote
+app.put('/api/installments/:id/items', (req, res) => {
+  const d = store.getData();
+  const inst = d.installments.find(i => i.id === req.params.id);
+  if (!inst) return bad(res, 'Nao encontrado', 404);
+  const b = req.body || {};
+  if (b.reimbursePerson !== undefined) inst.reimbursePerson = b.reimbursePerson || null;
+  for (const u of (Array.isArray(b.items) ? b.items : [])) {
+    const it = inst.items.find(x => x.number === Number(u.number));
+    if (!it) continue;
+    if (u.amount != null && u.amount !== '') it.amount = Math.round(Number(u.amount) * 100) / 100;
+    if (u.dueISO) { it.dueISO = u.dueISO; it.month = u.dueISO.slice(0, 7); }
+    if (u.reimburseAmount != null && u.reimburseAmount !== '') it.reimburseAmount = Math.max(0, Math.round(Number(u.reimburseAmount) * 100) / 100);
+    if (u.paid != null) { it.paid = !!u.paid; it.paidDate = it.paid ? new Date().toISOString().slice(0, 10) : null; }
+    if (u.reimburseReceived != null) { it.reimburseReceived = !!u.reimburseReceived; it.reimburseReceivedDate = it.reimburseReceived ? new Date().toISOString().slice(0, 10) : null; }
+  }
+  inst.totalAmount = Math.round(inst.items.reduce((s, x) => s + x.amount, 0) * 100) / 100;
+  store.scheduleBackup();
+  ok(res, inst);
+});
+// alternar recebimento do reembolso de uma parcela
+app.post('/api/installments/:id/reimburse/:number', (req, res) => {
+  const d = store.getData();
+  const inst = d.installments.find(i => i.id === req.params.id);
+  if (!inst) return bad(res, 'Nao encontrado', 404);
+  const it = inst.items.find(x => x.number === Number(req.params.number));
+  if (!it) return bad(res, 'Parcela nao encontrada', 404);
+  it.reimburseReceived = !it.reimburseReceived;
+  it.reimburseReceivedDate = it.reimburseReceived ? new Date().toISOString().slice(0, 10) : null;
+  store.scheduleBackup();
+  ok(res, inst);
+});
+
 // ---------- Emprestimos a terceiros (a receber) ----------
 app.get('/api/loans', (req, res) => ok(res, proj.loansStatus(store.getData())));
+app.get('/api/receivables', (req, res) => ok(res, proj.receivables(store.getData())));
 app.post('/api/loans', (req, res) => {
   const d = store.getData();
   const { person, description, totalAmount, numInstallments, method, firstDueISO, cardId, createCardExpense } = req.body || {};
@@ -356,6 +408,17 @@ app.post('/api/import/parse', upload.single('file'), async (req, res) => {
     else if (name.endsWith('.xlsx') || name.endsWith('.xls')) items = importer.parseExcel(req.file.buffer);
     else if (name.endsWith('.pdf')) items = await importer.parsePDF(req.file.buffer);
     else return bad(res, 'Formato nao suportado. Use CSV, XLSX ou PDF.');
+    // marca possiveis duplicatas ja cadastradas
+    const dd = store.getData();
+    const norm = x => String(x || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/[^a-z0-9]/g, '');
+    const existing = [];
+    dd.installments.forEach(inst => inst.items.forEach(it => existing.push({ n: norm(inst.description), a: it.amount, m: it.month })));
+    dd.transactions.forEach(t => existing.push({ n: norm(t.description), a: Number(t.amount), m: t.month }));
+    const mnum = mm => { const [y, o] = mm.split('-').map(Number); return y * 12 + o; };
+    items.forEach(it => {
+      const n = norm(it.description), m = (it.date || '').slice(0, 7);
+      it.duplicate = n.length > 2 && existing.some(e => Math.abs(mnum(e.m) - mnum(m)) <= 1 && Math.abs(e.a - it.amount) < 0.02 && (e.n.includes(n) || n.includes(e.n)));
+    });
     ok(res, { count: items.length, items, filename: req.file.originalname });
   } catch (e) {
     console.error(e);
