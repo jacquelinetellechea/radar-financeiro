@@ -21,6 +21,7 @@ const EMPTY = {
   loans: [],
   recurrings: [],
   transactions: [],
+  projects: [],
   meta: { createdAt: null, version: 1 }
 };
 

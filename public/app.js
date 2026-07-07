@@ -23,7 +23,6 @@
   const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   const MESF = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   function mesLabel(mk) { const [y, m] = mk.split('-'); return MES[+m - 1] + '/' + y.slice(2); }
-  function mesLabelFull4(mk) { const [y, m] = mk.split('-'); return MES[+m - 1] + '/' + y; }
   function mesLabelFull(mk) { const [y, m] = mk.split('-'); return MESF[+m - 1] + ' de ' + y; }
   const $ = sel => document.querySelector(sel);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -144,6 +143,7 @@
   // ---------------- Shell / Navegacao ----------------
   const NAV = [
     ['dashboard', 'Dashboard', '📊'],
+    ['vida', 'Projeto de Vida', '🎯'],
     ['cartoes', 'Cartoes', '💳'],
     ['parcelas', 'Parcelamentos', '🧾'],
     ['emprestimos', 'Emprestimos', '🤝'],
@@ -241,6 +241,7 @@
         <h3 class="font-semibold mb-3">Entradas x Saidas projetadas</h3>
         <canvas id="chart-io" height="90"></canvas>
       </div>
+      ${d.projects && d.projects.length ? `<div class="card p-5 mb-6"><h3 class="font-semibold mb-4">Projetos de Vida</h3><div class="grid md:grid-cols-2 gap-4">${d.projects.map(pr => `<div class="bg-panel2 rounded-xl p-4 border border-line cursor-pointer" data-goproj="${pr.id}"><div class="flex justify-between items-center"><b>${esc(pr.name)}</b><span class="chip">${pr.percent}%</span></div><div class="progress my-2"><div style="width:${pr.percent}%;background:#22d3ee"></div></div><div class="text-xs text-muted flex justify-between"><span>${brl(pr.saldo)} / ${brl(pr.target)}</span><span>${pr.daysLeft != null ? pr.daysLeft + ' dias' : ''}</span></div></div>`).join('')}</div></div>` : ''}
       <div class="card p-5">
         <h3 class="font-semibold mb-4">Limites dos cartoes</h3>
         <div class="grid md:grid-cols-2 gap-4">
@@ -253,6 +254,7 @@
       { label: 'Entradas', data: d.projection.map(p => p.income), backgroundColor: '#22c55e' },
       { label: 'Saidas', data: d.projection.map(p => p.expense), backgroundColor: '#ef4444' }
     ]);
+    document.querySelectorAll('[data-goproj]').forEach(el => el.addEventListener('click', () => { state.projId = el.dataset.goproj; state.vidaTab = 'info'; go('vida'); }));
   };
 
   function cardBar(c) {
@@ -380,7 +382,6 @@
   function instDetail(i) {
     const rows = i.items.map(it => `<tr>
       <td>${it.number}</td>
-      <td><span class="chip">${mesLabelFull4(it.dueISO.slice(0,7))}</span></td>
       <td><input class="input" style="width:135px" type="date" data-f="dueISO" data-n="${it.number}" value="${it.dueISO}"/></td>
       <td><input class="input" style="width:95px" type="number" step="0.01" data-f="amount" data-n="${it.number}" value="${it.amount}"/></td>
       <td><input class="input" style="width:95px" type="number" step="0.01" min="0" data-f="reimburseAmount" data-n="${it.number}" value="${it.reimburseAmount || 0}"/></td>
@@ -393,7 +394,7 @@
         <input class="input" id="inst-person" placeholder="Ex: Minha mae" value="${esc(i.reimbursePerson || '')}"/>
         <p class="text-xs text-muted mt-1">Em "Parte de terceiro", coloque quanto a outra pessoa te devolve em cada parcela. O restante e a sua despesa. Voce tambem pode editar o valor e o vencimento de cada parcela.</p>
       </div>
-      <div class="max-h-80 overflow-auto"><table><thead><tr><th>#</th><th>Mês</th><th>Vencimento</th><th>Valor</th><th>Parte de terceiro</th><th>Paga</th><th>Recebido</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="max-h-80 overflow-auto"><table><thead><tr><th>#</th><th>Vencimento</th><th>Valor</th><th>Parte de terceiro</th><th>Paga</th><th>Recebido</th></tr></thead><tbody>${rows}</tbody></table></div>
       <div class="flex justify-end gap-2 mt-4"><button class="btn btn-ghost" id="inst-cancel">Fechar</button><button class="btn btn-primary" id="inst-save">Salvar alteracoes</button></div>
     `, { wide: true });
     $('#inst-cancel').addEventListener('click', closeModal);
@@ -541,7 +542,7 @@
       <div class="card overflow-hidden">
         <table><thead><tr><th>Mes</th><th>Entradas</th><th>Saidas</th><th>Faturas</th><th>Saldo mes</th><th>Saldo acumulado</th></tr></thead>
         <tbody>${proj.map(p => `<tr class="${p.risk ? 'bg-bad/5' : ''}">
-          <td><b>${mesLabelFull4(p.month)}</b></td><td class="text-good">${brl(p.income)}</td>
+          <td><b>${mesLabel(p.month)}</b></td><td class="text-good">${brl(p.income)}</td>
           <td class="text-bad">${brl(p.expense)}</td><td>${brl(p.cardsInvoice)}</td>
           <td class="${p.net >= 0 ? 'text-good' : 'text-bad'}">${brl(p.net)}</td>
           <td class="${p.balance >= 0 ? 'text-good' : 'text-bad'}"><b>${brl(p.balance)}</b> ${p.risk ? '<span class="badge bg-bad/20 text-red-300 ml-1">risco</span>' : ''}</td>
@@ -756,6 +757,259 @@
   };
 
   function emptyState(msg) { return `<div class="card p-10 text-center text-muted col-span-full">${esc(msg)}</div>`; }
+
+
+  // ================= PROJETO DE VIDA =================
+  const VIDA_TABS = [['info', 'Informacoes'], ['simulador', 'Simulador'], ['fundo', 'Fundo'], ['compras', 'Compras'], ['checklist', 'Checklist'], ['cronograma', 'Cronograma'], ['metas', 'Metas'], ['inspiracao', 'Inspiracao']];
+  const genId = () => Math.random().toString(36).slice(2, 10);
+  const dbr = iso => iso ? iso.split('-').reverse().join('/') : '—';
+
+  async function saveProj() { try { await api('PUT', '/projects/' + state.proj.id, state.proj); go('vida'); } catch (e) { toast(e.message, 'err'); } }
+  function newProject() {
+    formModal('Novo projeto', [{ name: 'name', label: 'Nome do projeto', required: true, col: 'full', placeholder: 'Ex: Morar Sozinha' }],
+      async v => { const p = await api('POST', '/projects', v); state.projId = p.id; state.vidaTab = 'info'; closeModal(); toast('Projeto criado', 'ok'); go('vida'); });
+  }
+
+  PAGES.vida = async function () {
+    const list = await api('GET', '/projects');
+    const c = $('#content');
+    if (!list.length) {
+      c.innerHTML = pageHeader('Projeto de Vida', 'Transforme sonhos em projetos: plano financeiro, cronograma e checklist', '<button class="btn btn-primary" id="np">+ Novo projeto</button>')
+        + emptyState('Nenhum projeto ainda. Crie o primeiro (ex.: Morar Sozinha).');
+      $('#np').addEventListener('click', newProject);
+      return;
+    }
+    if (!state.projId || !list.find(p => p.id === state.projId)) state.projId = list[0].id;
+    const full = await api('GET', '/projects/' + state.projId);
+    const p = full.project; state.proj = p; const cp = full.computed; const alerts = full.alerts;
+    if (!state.vidaTab) state.vidaTab = 'info';
+    const opts = list.map(x => `<option value="${x.id}" ${x.id === state.projId ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    const ac = { high: 'border-bad/40 bg-bad/10 text-red-200', medium: 'border-warn/40 bg-warn/10 text-amber-200', low: 'border-line bg-panel2' };
+    c.innerHTML = pageHeader('Projeto de Vida', p.description || 'Planejamento do seu objetivo',
+      `<select class="input w-auto" id="proj-sel">${opts}</select> <button class="btn btn-primary" id="np">+ Novo</button> <button class="btn btn-ghost" id="dp">🗑️</button>`)
+      + `
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        ${statCard('Objetivo', esc(p.name), p.targetDate ? ('ate ' + dbr(p.targetDate)) : 'sem data', 'text-accent2')}
+        ${statCard('Valor necessario', brl(cp.target), 'meta total')}
+        ${statCard('Ja economizado', brl(cp.saldo), cp.percent + '% da meta', 'text-good')}
+        ${statCard('Falta economizar', brl(cp.restante), cp.monthsLeft != null ? ('em ' + cp.monthsLeft + ' meses') : '', 'text-warn')}
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        ${statCard('Economizar/mes', brl(cp.monthlyNeeded), 'para bater a meta', 'text-accent')}
+        ${statCard('Tempo restante', cp.daysLeft != null ? (cp.daysLeft + ' dias') : '—', cp.monthsLeft != null ? (cp.monthsLeft + ' meses') : '')}
+        ${statCard('Compras', cp.shopDone + '/' + cp.shopTotal, cp.shopPercent + '% feitas · pago ' + brl(cp.shopPaid))}
+        ${statCard('Checklist', cp.checkPercent + '%', cp.checkDone + '/' + cp.checklistTotal + ' itens')}
+      </div>
+      <div class="card p-3 mb-4"><div class="progress"><div style="width:${cp.percent}%;background:#22c55e"></div></div>
+        <div class="text-xs text-muted mt-1">${cp.percent}% da meta financeira · Prioridade ${esc(p.priority)} · Status ${esc(p.status)}</div></div>
+      ${alerts.length ? `<div class="space-y-2 mb-4">${alerts.map(a => `<div class="border rounded-lg px-3 py-2 text-sm ${ac[a.level]}">${esc(a.text)}</div>`).join('')}</div>` : ''}
+      <div class="flex gap-1 flex-wrap mb-4">${VIDA_TABS.map(([k, l]) => `<button class="btn ${k === state.vidaTab ? 'btn-primary' : 'btn-ghost'}" data-tab="${k}">${l}</button>`).join('')}</div>
+      <div id="vida-sub"></div>`;
+    $('#proj-sel').addEventListener('change', e => { state.projId = e.target.value; state.vidaTab = 'info'; go('vida'); });
+    $('#np').addEventListener('click', newProject);
+    $('#dp').addEventListener('click', () => confirmModal('Excluir o projeto "' + p.name + '" e todo o seu conteudo?', async () => { await api('DELETE', '/projects/' + p.id); state.projId = null; toast('Excluido', 'ok'); go('vida'); }));
+    document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { state.vidaTab = b.dataset.tab; renderVidaSub(cp); }));
+    renderVidaSub(cp);
+  };
+
+  function renderVidaSub(cp) {
+    const p = state.proj; const box = $('#vida-sub'); if (!box) return;
+    const T = state.vidaTab;
+    if (T === 'info') box.innerHTML = subInfo(p);
+    else if (T === 'simulador') box.innerHTML = subSimulador(p, cp);
+    else if (T === 'fundo') box.innerHTML = subFundo(p, cp);
+    else if (T === 'compras') box.innerHTML = subCompras(p);
+    else if (T === 'checklist') box.innerHTML = subChecklist(p);
+    else if (T === 'cronograma') box.innerHTML = subCronograma(p);
+    else if (T === 'metas') box.innerHTML = subMetas(p);
+    else if (T === 'inspiracao') box.innerHTML = subInspiracao(p);
+    bindVidaSub(cp);
+  }
+
+  // ----- Informacoes -----
+  function subInfo(p) {
+    return `<div class="card p-5 grid md:grid-cols-2 gap-4">
+      <div class="md:col-span-2"><label class="label">Nome</label><input class="input" id="i-name" value="${esc(p.name)}"></div>
+      <div class="md:col-span-2"><label class="label">Descricao</label><textarea class="input" id="i-desc" rows="2">${esc(p.description || '')}</textarea></div>
+      <div><label class="label">Data de inicio</label><input class="input" type="date" id="i-start" value="${p.startDate || ''}"></div>
+      <div><label class="label">Data prevista de conclusao</label><input class="input" type="date" id="i-target" value="${p.targetDate || ''}"></div>
+      <div><label class="label">Valor total necessario (R$)</label><input class="input" type="number" step="0.01" id="i-amount" value="${p.targetAmount || 0}"></div>
+      <div><label class="label">Valor inicial do fundo (R$)</label><input class="input" type="number" step="0.01" id="i-initial" value="${(p.fund && p.fund.initial) || 0}"></div>
+      <div><label class="label">Prioridade</label><select class="input" id="i-prio">${['Alta', 'Media', 'Baixa'].map(o => `<option ${p.priority === o ? 'selected' : ''}>${o}</option>`).join('')}</select></div>
+      <div><label class="label">Status</label><select class="input" id="i-status">${['Planejamento', 'Em andamento', 'Concluido', 'Pausado'].map(o => `<option ${p.status === o ? 'selected' : ''}>${o}</option>`).join('')}</select></div>
+      <div class="md:col-span-2 flex justify-end"><button class="btn btn-primary" id="i-save">Salvar informacoes</button></div>
+    </div>`;
+  }
+
+  // ----- Simulador (estilo de vida) -----
+  function subSimulador(p, cp) {
+    const rows = (p.lifestyle || []).map(i => `<tr><td>${esc(i.name)}</td><td>${brl(i.amount)}</td><td class="text-right"><button class="chip" data-lsdel="${i.id}">🗑️</button></td></tr>`).join('') || '<tr><td colspan="3" class="text-muted text-center py-4">Nenhum item cadastrado</td></tr>';
+    return `<div class="card p-5">
+      <div class="flex justify-between items-center mb-3"><h3 class="font-semibold">Custo do novo estilo de vida</h3><button class="btn btn-primary" id="ls-add">+ Item</button></div>
+      <table><thead><tr><th>Item</th><th>Valor/mes</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="grid grid-cols-3 gap-4 mt-4">
+        ${statCard('Custo mensal', brl(cp.lifestyleMonthly))}
+        ${statCard('Custo anual', brl(cp.lifestyleAnnual))}
+        ${statCard('Renda liquida recomendada', brl(cp.recommendedIncome), 'p/ manter com folga (custo ~70%)', 'text-good')}
+      </div></div>`;
+  }
+
+  // ----- Fundo -----
+  function subFundo(p, cp) {
+    const f = p.fund || { initial: 0, entries: [] };
+    const rows = (f.entries || []).slice().reverse().map(e => `<tr><td>${dbr(e.date)}</td><td><span class="chip">${e.type}</span></td><td class="${e.type === 'resgate' ? 'text-bad' : 'text-good'}">${brl(e.amount)}</td><td>${esc(e.note || '')}</td><td class="text-right"><button class="chip" data-fdel="${e.id}">🗑️</button></td></tr>`).join('') || '<tr><td colspan="5" class="text-muted text-center py-4">Nenhum aporte ainda</td></tr>';
+    return `<div class="card p-5">
+      <div class="flex justify-between items-center mb-3"><h3 class="font-semibold">Fundo do projeto</h3><div class="flex gap-2"><button class="btn btn-primary" id="ap-add">+ Aporte</button><button class="btn btn-ghost" id="rg-add">- Resgate</button></div></div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        ${statCard('Valor inicial', brl(f.initial))}
+        ${statCard('Aportes', brl(cp.aportes), null, 'text-good')}
+        ${statCard('Resgates', brl(cp.resgates), null, 'text-bad')}
+        ${statCard('Saldo atual', brl(cp.saldo), cp.percent + '% da meta', 'text-accent2')}
+      </div>
+      <canvas id="fund-chart" height="90"></canvas>
+      <table class="mt-4"><thead><tr><th>Data</th><th>Tipo</th><th>Valor</th><th>Obs</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }
+
+  // ----- Compras -----
+  function subCompras(p) {
+    const rows = (p.shopping || []).map(i => `<tr>
+      <td><b>${esc(i.name)}</b></td><td><span class="chip">${esc(i.category || '-')}</span></td><td>${esc(i.priority || '-')}</td>
+      <td>${brl(i.estimated)}</td><td class="text-good">${brl(i.paid)}</td><td>${esc(i.store || '')}</td><td>${dbr(i.dueDate)}</td>
+      <td><span class="badge ${(i.status === 'Comprado' || i.status === 'Concluido') ? 'bg-good/20 text-green-300' : 'bg-panel2 text-muted'}">${esc(i.status || 'Pendente')}</span></td>
+      <td class="text-right whitespace-nowrap"><button class="chip" data-shop-done="${i.id}">✓</button> <button class="chip" data-shop-edit="${i.id}">✏️</button> <button class="chip" data-shop-del="${i.id}">🗑️</button></td>
+    </tr>`).join('') || '<tr><td colspan="9" class="text-muted text-center py-4">Nenhum item</td></tr>';
+    return `<div class="card overflow-hidden">
+      <div class="flex justify-between items-center p-4"><h3 class="font-semibold">Planejamento de compras</h3><button class="btn btn-primary" id="shop-add">+ Item</button></div>
+      <table><thead><tr><th>Item</th><th>Categoria</th><th>Prior.</th><th>Estimado</th><th>Pago</th><th>Loja</th><th>Prazo</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }
+
+  // ----- Checklist -----
+  function subChecklist(p) {
+    const next = { 'Pendente': 'Em andamento', 'Em andamento': 'Concluido', 'Concluido': 'Pendente' };
+    const col = { 'Pendente': 'bg-panel2 text-muted', 'Em andamento': 'bg-warn/20 text-amber-300', 'Concluido': 'bg-good/20 text-green-300' };
+    const rows = (p.checklist || []).map(i => `<tr><td>${esc(i.text)}</td>
+      <td><button class="badge ${col[i.status] || col.Pendente}" data-chk="${i.id}">${esc(i.status || 'Pendente')}</button></td>
+      <td class="text-right"><button class="chip" data-chk-del="${i.id}">🗑️</button></td></tr>`).join('') || '<tr><td colspan="3" class="text-muted text-center py-4">Nenhum item</td></tr>';
+    return `<div class="card overflow-hidden">
+      <div class="flex justify-between items-center p-4"><h3 class="font-semibold">Checklist da mudanca</h3><button class="btn btn-primary" id="chk-add">+ Item</button></div>
+      <table><thead><tr><th>Tarefa</th><th>Status (clique p/ mudar)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }
+
+  // ----- Cronograma -----
+  function subCronograma(p) {
+    const items = (p.timeline || []).slice().sort((a, b) => (a.year + '').localeCompare(b.year + ''));
+    const byYear = {};
+    items.forEach(i => { (byYear[i.year] = byYear[i.year] || []).push(i); });
+    const years = Object.keys(byYear).sort();
+    const body = years.length ? years.map(y => `<div class="mb-4"><h4 class="font-bold text-accent2 mb-2">${esc(y)}</h4>
+      ${byYear[y].map(i => `<div class="flex items-center justify-between border-b border-line/50 py-1.5 text-sm">
+        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" data-tl="${i.id}" ${i.done ? 'checked' : ''}> <span class="${i.done ? 'line-through text-muted' : ''}">${esc(i.text)}</span></label>
+        <button class="chip" data-tl-del="${i.id}">🗑️</button></div>`).join('')}</div>`).join('') : '<p class="text-muted text-sm">Nenhuma etapa. Adicione a primeira.</p>';
+    return `<div class="card p-5"><div class="flex justify-between items-center mb-3"><h3 class="font-semibold">Cronograma</h3><button class="btn btn-primary" id="tl-add">+ Etapa</button></div>${body}</div>`;
+  }
+
+  // ----- Metas -----
+  function subMetas(p) {
+    const rows = (p.goals || []).map(g => `<tr><td><b>${esc(g.text)}</b></td><td>${dbr(g.deadline)}</td>
+      <td><div class="progress" style="width:90px"><div style="width:${g.percent || 0}%;background:#6366f1"></div></div><span class="text-xs text-muted">${g.percent || 0}%</span></td>
+      <td><span class="badge ${g.status === 'Concluido' ? 'bg-good/20 text-green-300' : 'bg-panel2 text-muted'}">${esc(g.status || 'Pendente')}</span></td>
+      <td class="text-right whitespace-nowrap"><button class="chip" data-goal-edit="${g.id}">✏️</button> <button class="chip" data-goal-del="${g.id}">🗑️</button></td></tr>`).join('') || '<tr><td colspan="5" class="text-muted text-center py-4">Nenhuma meta</td></tr>';
+    return `<div class="card overflow-hidden"><div class="flex justify-between items-center p-4"><h3 class="font-semibold">Metas mensais</h3><button class="btn btn-primary" id="goal-add">+ Meta</button></div>
+      <table><thead><tr><th>Meta</th><th>Prazo</th><th>Progresso</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  // ----- Inspiracao -----
+  function subInspiracao(p) {
+    const cards = (p.inspiration || []).map(i => {
+      let inner = '';
+      if (i.type === 'image') inner = `<img src="${esc(i.content)}" class="w-full h-40 object-cover rounded-lg mb-2" onerror="this.style.display='none'">`;
+      else if (i.type === 'link') inner = `<a href="${esc(i.content)}" target="_blank" class="text-accent2 underline break-all text-sm">${esc(i.content)}</a>`;
+      return `<div class="card p-3">${inner}${i.note ? `<div class="text-sm mt-1">${esc(i.note)}</div>` : ''}
+        <div class="text-right mt-2"><button class="chip" data-insp-del="${i.id}">🗑️</button></div></div>`;
+    }).join('') || emptyState('Mural vazio. Adicione links, imagens (por URL) ou anotacoes.');
+    return `<div><div class="flex justify-between items-center mb-3"><h3 class="font-semibold">Mural de inspiracao</h3><button class="btn btn-primary" id="insp-add">+ Adicionar</button></div>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-4">${cards}</div></div>`;
+  }
+
+  // ----- Bindings de todas as subsecoes -----
+  function bindVidaSub(cp) {
+    const p = state.proj;
+    // Info
+    if ($('#i-save')) $('#i-save').addEventListener('click', () => {
+      p.name = $('#i-name').value || p.name; p.description = $('#i-desc').value;
+      p.startDate = $('#i-start').value; p.targetDate = $('#i-target').value;
+      p.targetAmount = Number($('#i-amount').value) || 0;
+      if (!p.fund) p.fund = { initial: 0, entries: [] }; p.fund.initial = Number($('#i-initial').value) || 0;
+      p.priority = $('#i-prio').value; p.status = $('#i-status').value;
+      toast('Salvo', 'ok'); saveProj();
+    });
+    // Simulador
+    if ($('#ls-add')) $('#ls-add').addEventListener('click', () => formModal('Novo item de custo', [
+      { name: 'name', label: 'Item', required: true, placeholder: 'Ex: Aluguel' }, { name: 'amount', label: 'Valor/mes (R$)', type: 'number', step: '0.01', required: true }
+    ], async v => { (p.lifestyle = p.lifestyle || []).push({ id: genId(), name: v.name, amount: Number(v.amount) || 0 }); closeModal(); saveProj(); }));
+    document.querySelectorAll('[data-lsdel]').forEach(b => b.addEventListener('click', () => { p.lifestyle = p.lifestyle.filter(x => x.id !== b.dataset.lsdel); saveProj(); }));
+    // Fundo
+    const fundForm = (type) => formModal(type === 'aporte' ? 'Novo aporte' : 'Novo resgate', [
+      { name: 'amount', label: 'Valor (R$)', type: 'number', step: '0.01', required: true },
+      { name: 'date', label: 'Data', type: 'date', value: new Date().toISOString().slice(0, 10) },
+      { name: 'note', label: 'Observacao', placeholder: 'opcional' },
+      { name: 'affectCashflow', label: 'Lancar no Fluxo de Caixa?', type: 'select', options: [{ value: '', label: 'Nao' }, { value: '1', label: 'Sim' }] }
+    ], async v => { await api('POST', '/projects/' + p.id + '/fund', { type, amount: v.amount, date: v.date, note: v.note, affectCashflow: !!v.affectCashflow }); closeModal(); toast('Registrado', 'ok'); go('vida'); });
+    if ($('#ap-add')) $('#ap-add').addEventListener('click', () => fundForm('aporte'));
+    if ($('#rg-add')) $('#rg-add').addEventListener('click', () => fundForm('resgate'));
+    document.querySelectorAll('[data-fdel]').forEach(b => b.addEventListener('click', () => { p.fund.entries = p.fund.entries.filter(x => x.id !== b.dataset.fdel); saveProj(); }));
+    if ($('#fund-chart')) {
+      const f = p.fund || { initial: 0, entries: [] }; let run = Number(f.initial || 0); const labels = ['inicio']; const dd = [run];
+      (f.entries || []).forEach(e => { run += (e.type === 'resgate' ? -1 : 1) * Number(e.amount || 0); labels.push((e.date || '').slice(5)); dd.push(Math.round(run * 100) / 100); });
+      makeChart('fund-chart', 'line', labels, [{ label: 'Saldo do fundo', data: dd, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.15)', fill: true, tension: .3 }]);
+    }
+    // Compras
+    const shopFields = (it) => [
+      { name: 'name', label: 'Nome', required: true, col: 'full', value: it && it.name },
+      { name: 'category', label: 'Categoria', type: 'select', value: it && it.category, options: ['Dormitorio', 'Sala', 'Cozinha', 'Banheiro', 'Lavanderia', 'Limpeza', 'Decoracao', 'Eletrodomesticos', 'Eletronicos', 'Utensilios', 'Organizacao', 'Outros'].map(o => ({ value: o, label: o })) },
+      { name: 'priority', label: 'Prioridade', type: 'select', value: it && it.priority, options: ['Alta', 'Media', 'Baixa'].map(o => ({ value: o, label: o })) },
+      { name: 'estimated', label: 'Valor estimado (R$)', type: 'number', step: '0.01', value: it && it.estimated },
+      { name: 'paid', label: 'Valor pago (R$)', type: 'number', step: '0.01', value: it && it.paid },
+      { name: 'store', label: 'Loja', value: it && it.store },
+      { name: 'dueDate', label: 'Data prevista', type: 'date', value: it && it.dueDate },
+      { name: 'status', label: 'Status', type: 'select', value: it && it.status, options: ['Pendente', 'Comprado'].map(o => ({ value: o, label: o })) },
+      { name: 'notes', label: 'Observacoes', col: 'full', value: it && it.notes }
+    ];
+    if ($('#shop-add')) $('#shop-add').addEventListener('click', () => formModal('Novo item de compra', shopFields(), async v => { (p.shopping = p.shopping || []).push(Object.assign({ id: genId() }, v)); closeModal(); saveProj(); }));
+    document.querySelectorAll('[data-shop-edit]').forEach(b => b.addEventListener('click', () => { const it = p.shopping.find(x => x.id === b.dataset.shopEdit); formModal('Editar item', shopFields(it), async v => { Object.assign(it, v); closeModal(); saveProj(); }); }));
+    document.querySelectorAll('[data-shop-del]').forEach(b => b.addEventListener('click', () => { p.shopping = p.shopping.filter(x => x.id !== b.dataset.shopDel); saveProj(); }));
+    document.querySelectorAll('[data-shop-done]').forEach(b => b.addEventListener('click', () => { const it = p.shopping.find(x => x.id === b.dataset.shopDone); it.status = 'Comprado'; if (!Number(it.paid)) it.paid = it.estimated; saveProj(); }));
+    // Checklist
+    const chkNext = { 'Pendente': 'Em andamento', 'Em andamento': 'Concluido', 'Concluido': 'Pendente' };
+    if ($('#chk-add')) $('#chk-add').addEventListener('click', () => formModal('Novo item do checklist', [{ name: 'text', label: 'Tarefa', required: true, col: 'full' }], async v => { (p.checklist = p.checklist || []).push({ id: genId(), text: v.text, status: 'Pendente' }); closeModal(); saveProj(); }));
+    document.querySelectorAll('[data-chk]').forEach(b => b.addEventListener('click', () => { const it = p.checklist.find(x => x.id === b.dataset.chk); it.status = chkNext[it.status || 'Pendente']; saveProj(); }));
+    document.querySelectorAll('[data-chk-del]').forEach(b => b.addEventListener('click', () => { p.checklist = p.checklist.filter(x => x.id !== b.dataset.chkDel); saveProj(); }));
+    // Cronograma
+    if ($('#tl-add')) $('#tl-add').addEventListener('click', () => formModal('Nova etapa do cronograma', [{ name: 'year', label: 'Ano', value: new Date().getFullYear() }, { name: 'text', label: 'Etapa', required: true, col: 'full' }], async v => { (p.timeline = p.timeline || []).push({ id: genId(), year: v.year, text: v.text, done: false }); closeModal(); saveProj(); }));
+    document.querySelectorAll('[data-tl]').forEach(b => b.addEventListener('change', () => { const it = p.timeline.find(x => x.id === b.dataset.tl); it.done = b.checked; saveProj(); }));
+    document.querySelectorAll('[data-tl-del]').forEach(b => b.addEventListener('click', () => { p.timeline = p.timeline.filter(x => x.id !== b.dataset.tlDel); saveProj(); }));
+    // Metas
+    const goalFields = (g) => [
+      { name: 'text', label: 'Meta', required: true, col: 'full', value: g && g.text },
+      { name: 'deadline', label: 'Prazo', type: 'date', value: g && g.deadline },
+      { name: 'percent', label: 'Progresso (%)', type: 'number', min: 0, value: (g && g.percent) || 0 },
+      { name: 'status', label: 'Status', type: 'select', value: g && g.status, options: ['Pendente', 'Em andamento', 'Concluido'].map(o => ({ value: o, label: o })) }
+    ];
+    if ($('#goal-add')) $('#goal-add').addEventListener('click', () => formModal('Nova meta', goalFields(), async v => { (p.goals = p.goals || []).push(Object.assign({ id: genId() }, v, { percent: Number(v.percent) || 0 })); closeModal(); saveProj(); }));
+    document.querySelectorAll('[data-goal-edit]').forEach(b => b.addEventListener('click', () => { const g = p.goals.find(x => x.id === b.dataset.goalEdit); formModal('Editar meta', goalFields(g), async v => { Object.assign(g, v, { percent: Number(v.percent) || 0 }); closeModal(); saveProj(); }); }));
+    document.querySelectorAll('[data-goal-del]').forEach(b => b.addEventListener('click', () => { p.goals = p.goals.filter(x => x.id !== b.dataset.goalDel); saveProj(); }));
+    // Inspiracao
+    if ($('#insp-add')) $('#insp-add').addEventListener('click', () => formModal('Adicionar ao mural', [
+      { name: 'type', label: 'Tipo', type: 'select', options: [{ value: 'link', label: 'Link' }, { value: 'image', label: 'Imagem (URL)' }, { value: 'note', label: 'Anotacao' }] },
+      { name: 'content', label: 'Link ou URL da imagem', col: 'full', placeholder: 'https://... (deixe vazio se for so anotacao)' },
+      { name: 'note', label: 'Anotacao / descricao', col: 'full' }
+    ], async v => { (p.inspiration = p.inspiration || []).push({ id: genId(), type: v.type, content: v.content, note: v.note }); closeModal(); saveProj(); }));
+    document.querySelectorAll('[data-insp-del]').forEach(b => b.addEventListener('click', () => { p.inspiration = p.inspiration.filter(x => x.id !== b.dataset.inspDel); saveProj(); }));
+  }
+
 
   // ---------------- Boot ----------------
   if (state.token) { renderShell(); go('dashboard'); } else { renderAuth(); }

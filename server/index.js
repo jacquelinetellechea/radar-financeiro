@@ -27,6 +27,7 @@ const store = require('./store');
 const fin = require('./finance');
 const proj = require('./projection');
 const importer = require('./importer');
+const projmod = require('./projects');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -340,8 +341,66 @@ app.delete('/api/transactions/:id', (req, res) => {
   ok(res, { success: true });
 });
 
+// ---------- Projeto de Vida ----------
+app.get('/api/projects', (req, res) => ok(res, store.getData().projects.map(projmod.projectSummary)));
+app.get('/api/projects/:id', (req, res) => {
+  const p = store.getData().projects.find(x => x.id === req.params.id);
+  if (!p) return bad(res, 'Projeto nao encontrado', 404);
+  ok(res, { project: p, computed: projmod.computeProject(p), alerts: projmod.projectAlerts(p, projmod.computeProject(p)) });
+});
+app.post('/api/projects', (req, res) => {
+  const d = store.getData();
+  const p = projmod.blankProject(store.id(), (req.body && req.body.name) || 'Novo projeto');
+  d.projects.push(p);
+  store.scheduleBackup();
+  ok(res, p);
+});
+app.put('/api/projects/:id', (req, res) => {
+  const d = store.getData();
+  const idx = d.projects.findIndex(x => x.id === req.params.id);
+  if (idx < 0) return bad(res, 'Projeto nao encontrado', 404);
+  const b = req.body || {};
+  // preserva id/createdAt; substitui o resto pelos campos enviados
+  d.projects[idx] = Object.assign({}, d.projects[idx], b, { id: d.projects[idx].id, createdAt: d.projects[idx].createdAt });
+  store.scheduleBackup();
+  ok(res, d.projects[idx]);
+});
+app.delete('/api/projects/:id', (req, res) => {
+  const d = store.getData();
+  d.projects = d.projects.filter(x => x.id !== req.params.id);
+  store.scheduleBackup();
+  ok(res, { success: true });
+});
+// aporte/resgate no fundo, com integracao opcional ao fluxo de caixa
+app.post('/api/projects/:id/fund', (req, res) => {
+  const d = store.getData();
+  const p = d.projects.find(x => x.id === req.params.id);
+  if (!p) return bad(res, 'Projeto nao encontrado', 404);
+  const { type, amount, note, date, affectCashflow } = req.body || {};
+  const amt = Number(amount);
+  if (!amt || amt <= 0) return bad(res, 'Informe um valor valido.');
+  const dateISO = date || new Date().toISOString().slice(0, 10);
+  if (!p.fund) p.fund = { initial: 0, entries: [] };
+  p.fund.entries.push({ id: store.id(), date: dateISO, type: type === 'resgate' ? 'resgate' : 'aporte', amount: amt, note: note || '' });
+  if (affectCashflow) {
+    // aporte sai do fluxo (despesa); resgate volta (receita)
+    d.transactions.push({
+      id: store.id(), type: type === 'resgate' ? 'income' : 'expense',
+      description: (type === 'resgate' ? 'Resgate ' : 'Aporte ') + p.name, category: 'Projeto de Vida',
+      amount: amt, dateISO, month: fin.monthKey(dateISO), source: 'projeto', createdAt: new Date().toISOString()
+    });
+  }
+  store.scheduleBackup();
+  ok(res, { project: p, computed: projmod.computeProject(p) });
+});
+
 // ---------- Dashboard / Projecao / Relatorios ----------
-app.get('/api/dashboard', (req, res) => ok(res, proj.dashboard(store.getData())));
+app.get('/api/dashboard', (req, res) => {
+  const data = store.getData();
+  const dash = proj.dashboard(data);
+  dash.projects = data.projects.map(projmod.projectSummary);
+  ok(res, dash);
+});
 app.get('/api/projection', (req, res) => {
   const count = Math.min(48, Math.max(1, Number(req.query.count) || 12));
   ok(res, proj.monthlyProjection(store.getData(), count));
