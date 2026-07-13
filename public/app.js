@@ -103,7 +103,7 @@
 
   // ---------------- Auth ----------------
   function logout() { state.token = null; state.email = null; localStorage.removeItem('rf_token'); localStorage.removeItem('rf_email'); renderAuth(); }
-  function saveSession(res) { state.token = res.token; state.email = res.email; localStorage.setItem('rf_token', res.token); localStorage.setItem('rf_email', res.email); renderShell(); go('dashboard'); }
+  function saveSession(res) { state.token = res.token; state.email = res.email; localStorage.setItem('rf_token', res.token); localStorage.setItem('rf_email', res.email); state.app = 'hub'; renderHub(); }
 
   async function renderAuth() {
     let hasUser = true;
@@ -141,7 +141,7 @@
   }
 
   // ---------------- Shell / Navegacao ----------------
-  const NAV = [
+  const NAV_RADAR = [
     ['dashboard', 'Dashboard', '📊'],
     ['vida', 'Projeto de Vida', '🎯'],
     ['cartoes', 'Cartoes', '💳'],
@@ -156,16 +156,22 @@
     ['simulador', 'Simulador', '🔮'],
     ['config', 'Configuracoes', '⚙️'],
   ];
+  const NAV_EVENTOS = [
+    ['eventos', 'Eventos', '🎉'],
+  ];
 
   function renderShell() {
+    const isEv = state.app === 'eventos';
+    const NAV = isEv ? NAV_EVENTOS : NAV_RADAR;
     const app = document.getElementById('app');
     app.innerHTML = `
       <div class="flex min-h-screen">
         <aside class="hidden md:flex flex-col w-60 bg-panel border-r border-line p-4 gap-1 sticky top-0 h-screen">
           <div class="flex items-center gap-2 px-2 mb-5">
-            <span class="inline-block w-8 h-8 rounded-lg bg-accent flex items-center justify-center">📡</span>
-            <div><div class="font-bold leading-tight">Radar</div><div class="text-[10px] text-muted -mt-0.5">Financeiro</div></div>
+            <span class="inline-block w-8 h-8 rounded-lg flex items-center justify-center" style="background:${isEv ? '#22d3ee' : '#6366f1'}">${isEv ? '🎉' : '📡'}</span>
+            <div><div class="font-bold leading-tight">${isEv ? 'Eventos' : 'Radar'}</div><div class="text-[10px] text-muted -mt-0.5">${isEv ? 'Organizacao' : 'Financeiro'}</div></div>
           </div>
+          <div class="nav-link mb-2" id="to-hub"><span>←</span>Projetos</div>
           <nav id="nav" class="flex-1 space-y-1 overflow-auto">
             ${NAV.map(([k, l, i]) => `<div class="nav-link" data-page="${k}"><span>${i}</span>${l}</div>`).join('')}
           </nav>
@@ -173,13 +179,15 @@
         </aside>
         <div class="flex-1 min-w-0">
           <header class="md:hidden flex items-center justify-between p-3 border-b border-line bg-panel sticky top-0 z-20">
-            <div class="font-bold">📡 Radar</div>
+            <button class="font-bold" id="to-hub-m">← ${isEv ? '🎉 Eventos' : '📡 Radar'}</button>
             <select id="mobile-nav" class="input w-auto">${NAV.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
           </header>
           <main id="content" class="p-4 md:p-8 max-w-7xl mx-auto"></main>
         </div>
       </div>`;
     $('#logout').addEventListener('click', logout);
+    if ($('#to-hub')) $('#to-hub').addEventListener('click', () => { state.app = 'hub'; renderHub(); });
+    if ($('#to-hub-m')) $('#to-hub-m').addEventListener('click', () => { state.app = 'hub'; renderHub(); });
     document.querySelectorAll('#nav .nav-link').forEach(n => n.addEventListener('click', () => go(n.dataset.page)));
     const mob = $('#mobile-nav'); if (mob) mob.addEventListener('change', () => go(mob.value));
   }
@@ -1011,6 +1019,288 @@
   }
 
 
+
+  // ================= HUB DE PROJETOS =================
+  function hubCard(key, title, sub, desc, icon, color) {
+    return `<div class="card p-6 cursor-pointer hover:border-accent transition" data-hub="${key}" style="border-top:3px solid ${color}">
+      <div class="flex justify-between items-start mb-4">
+        <span class="w-11 h-11 rounded-xl flex items-center justify-center text-xl" style="background:${color}33">${icon}</span>
+        <span class="badge bg-good/20 text-green-300">ATIVO</span>
+      </div>
+      <h3 class="text-xl font-bold">${esc(title)}</h3>
+      <p class="text-accent2 text-sm mb-3">${esc(sub)}</p>
+      <p class="text-muted text-sm mb-5 leading-relaxed">${esc(desc)}</p>
+      <div class="text-accent font-semibold text-sm">Acessar →</div>
+    </div>`;
+  }
+  function renderHub() {
+    const app = document.getElementById('app');
+    app.innerHTML = `
+      <div class="min-h-screen">
+        <header class="flex items-center justify-between px-6 py-4 border-b border-line bg-panel">
+          <div class="flex items-center gap-2 font-bold"><span class="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">🗂️</span> Meus Projetos</div>
+          <div class="flex items-center gap-4 text-sm text-muted">
+            <span class="hidden md:inline">${esc(state.email || '')}</span>
+            <button class="btn btn-ghost" id="hub-logout">Sair</button>
+          </div>
+        </header>
+        <div class="max-w-6xl mx-auto px-6 py-14 fade-in">
+          <h1 class="text-3xl md:text-4xl font-extrabold mb-2">Qual projeto voce quer abrir?</h1>
+          <p class="text-muted mb-10">Cada projeto abre o seu proprio painel, com dados e telas independentes.</p>
+          <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            ${hubCard('radar', 'Radar Financeiro', 'Controle financeiro pessoal', 'Cartoes, parcelamentos, emprestimos, fluxo de caixa projetado, importacao de faturas, relatorios e Projeto de Vida.', '📡', '#6366f1')}
+            ${hubCard('eventos', 'Eventos', 'Organizacao de eventos', 'Eventos seus ou de clientes: orcamento, fornecedores, convidados, checklist com prazos e honorarios.', '🎉', '#22d3ee')}
+          </div>
+        </div>
+      </div>`;
+    $('#hub-logout').addEventListener('click', logout);
+    document.querySelectorAll('[data-hub]').forEach(c => c.addEventListener('click', () => openApp(c.dataset.hub)));
+  }
+  function openApp(key) {
+    state.app = key;
+    renderShell();
+    go(key === 'eventos' ? 'eventos' : 'dashboard');
+  }
+
+  // ================= EVENTOS =================
+  const EV_TABS = [['info', 'Informacoes'], ['fornecedores', 'Fornecedores'], ['convidados', 'Convidados'], ['checklist', 'Checklist'], ['honorarios', 'Honorarios']];
+  const EV_CATS = ['Buffet', 'Local', 'Decoracao', 'Fotografia', 'Musica/DJ', 'Bolo/Doces', 'Convites', 'Vestuario/Beleza', 'Transporte', 'Outros'];
+
+  async function saveEv() { try { await api('PUT', '/events/' + state.ev.id, state.ev); go('eventos'); } catch (e) { toast(e.message, 'err'); } }
+  function newEvent() {
+    formModal('Novo evento', [{ name: 'name', label: 'Nome do evento', required: true, col: 'full', placeholder: 'Ex: Casamento da Ana' }],
+      async v => { const e = await api('POST', '/events', v); state.evId = e.id; state.evTab = 'info'; closeModal(); toast('Evento criado', 'ok'); go('eventos'); });
+  }
+  function evCard(e) {
+    return `<div class="card p-5 cursor-pointer hover:border-accent transition" data-ev="${e.id}">
+      <div class="flex justify-between items-start mb-2">
+        <div><h3 class="font-bold">${esc(e.name)}</h3><p class="text-muted text-xs">${esc(e.type || '')}${e.date ? ' · ' + dbr(e.date) : ''}${e.venue ? ' · ' + esc(e.venue) : ''}</p></div>
+        <span class="badge ${e.owner === 'Cliente' ? 'bg-accent/20 text-indigo-300' : 'bg-panel2 text-muted'}">${esc(e.owner || 'Meu')}</span>
+      </div>
+      ${e.clientName ? `<p class="text-xs text-accent2 mb-2">Cliente: ${esc(e.clientName)}</p>` : ''}
+      <div class="grid grid-cols-2 gap-2 text-sm my-3">
+        <div><div class="text-muted text-xs">Orcamento</div><b class="${e.overBudget ? 'text-bad' : ''}">${brl(e.budget)}</b></div>
+        <div><div class="text-muted text-xs">A pagar</div><b class="text-warn">${brl(e.toPay)}</b></div>
+      </div>
+      <div class="progress mb-1"><div style="width:${e.checkPercent}%;background:#22d3ee"></div></div>
+      <div class="flex justify-between text-xs text-muted"><span>${e.checkPercent}% checklist</span><span>${e.confirmedPeople} confirmados</span><span>${e.daysLeft != null ? e.daysLeft + ' dias' : ''}</span></div>
+    </div>`;
+  }
+
+  PAGES.eventos = async function () {
+    const list = await api('GET', '/events');
+    const c = $('#content');
+    if (!state.evId) {
+      c.innerHTML = pageHeader('Eventos', 'Eventos seus ou de clientes: orcamento, fornecedores, convidados e checklist', '<button class="btn btn-primary" id="ne">+ Novo evento</button>')
+        + (list.length ? `<div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">${list.map(evCard).join('')}</div>` : emptyState('Nenhum evento ainda. Crie o primeiro.'));
+      $('#ne').addEventListener('click', newEvent);
+      document.querySelectorAll('[data-ev]').forEach(el => el.addEventListener('click', () => { state.evId = el.dataset.ev; state.evTab = 'info'; go('eventos'); }));
+      return;
+    }
+    const full = await api('GET', '/events/' + state.evId);
+    const e = full.event; state.ev = e; const ce = full.computed; const alerts = full.alerts;
+    if (!state.evTab) state.evTab = 'info';
+    const tabs = EV_TABS.filter(t => t[0] !== 'honorarios' || e.owner === 'Cliente');
+    if (state.evTab === 'honorarios' && e.owner !== 'Cliente') state.evTab = 'info';
+    const ac = { high: 'border-bad/40 bg-bad/10 text-red-200', medium: 'border-warn/40 bg-warn/10 text-amber-200', low: 'border-line bg-panel2' };
+    c.innerHTML = pageHeader(e.name, [e.type, e.date ? dbr(e.date) + (e.time ? ' ' + e.time : '') : '', e.venue].filter(Boolean).join(' · '),
+      `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`)
+      + `
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        ${statCard('Dias restantes', ce.daysLeft != null ? ce.daysLeft : '—', e.date ? dbr(e.date) : 'sem data', 'text-accent2')}
+        ${statCard('Orcamento', brl(ce.budget), (ce.overBudget ? 'ESTOUROU ' : 'sobra ') + brl(Math.abs(ce.budgetLeft)), ce.overBudget ? 'text-bad' : 'text-white')}
+        ${statCard('Contratado', brl(ce.contracted), 'pago ' + brl(ce.paid))}
+        ${statCard('A pagar', brl(ce.toPay), null, 'text-warn')}
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        ${statCard('Pessoas confirmadas', ce.confirmedPeople, 'de ' + ce.invitedPeople + ' convidadas', 'text-good')}
+        ${statCard('Sem resposta', ce.pendingGuests, ce.refusedGuests + ' recusaram')}
+        ${statCard('Checklist', ce.checkPercent + '%', ce.checkDone + '/' + ce.checklistTotal + (ce.overdueTasks ? ' · ' + ce.overdueTasks + ' atrasada(s)' : ''), ce.overdueTasks ? 'text-bad' : 'text-white')}
+        ${e.owner === 'Cliente' ? statCard('Honorarios a receber', brl(ce.feeToReceive), 'de ' + brl(ce.feeTotal), 'text-accent') : statCard('Status', esc(e.status), 'evento proprio')}
+      </div>
+      ${alerts.length ? `<div class="space-y-2 mb-4">${alerts.map(a => `<div class="border rounded-lg px-3 py-2 text-sm ${ac[a.level]}">${esc(a.text)}</div>`).join('')}</div>` : ''}
+      <div class="flex gap-1 flex-wrap mb-4">${tabs.map(([k, l]) => `<button class="btn ${k === state.evTab ? 'btn-primary' : 'btn-ghost'}" data-evtab="${k}">${l}</button>`).join('')}</div>
+      <div id="ev-sub"></div>`;
+    $('#ev-back').addEventListener('click', () => { state.evId = null; go('eventos'); });
+    $('#ev-del').addEventListener('click', () => confirmModal('Excluir o evento "' + e.name + '" e tudo dele?', async () => { await api('DELETE', '/events/' + e.id); state.evId = null; toast('Excluido', 'ok'); go('eventos'); }));
+    document.querySelectorAll('[data-evtab]').forEach(b => b.addEventListener('click', () => { state.evTab = b.dataset.evtab; renderEvSub(ce); }));
+    renderEvSub(ce);
+  };
+
+  function renderEvSub(ce) {
+    const e = state.ev; const box = $('#ev-sub'); if (!box) return;
+    const T = state.evTab;
+    if (T === 'info') box.innerHTML = subEvInfo(e);
+    else if (T === 'fornecedores') box.innerHTML = subEvVendors(e);
+    else if (T === 'convidados') box.innerHTML = subEvGuests(e, ce);
+    else if (T === 'checklist') box.innerHTML = subEvCheck(e);
+    else if (T === 'honorarios') box.innerHTML = subEvFee(e, ce);
+    bindEvSub(ce);
+  }
+
+  function subEvInfo(e) {
+    const isCli = e.owner === 'Cliente';
+    return `<div class="card p-5 grid md:grid-cols-2 gap-4">
+      <div class="md:col-span-2"><label class="label">Nome do evento</label><input class="input" id="e-name" value="${esc(e.name)}"></div>
+      <div><label class="label">Tipo</label><select class="input" id="e-type">${['Casamento', 'Festa', 'Formatura', 'Aniversario', 'Corporativo', 'Outro'].map(o => `<option ${e.type === o ? 'selected' : ''}>${o}</option>`).join('')}</select></div>
+      <div><label class="label">Status</label><select class="input" id="e-status">${['Planejamento', 'Confirmado', 'Realizado', 'Cancelado'].map(o => `<option ${e.status === o ? 'selected' : ''}>${o}</option>`).join('')}</select></div>
+      <div><label class="label">Data</label><input class="input" type="date" id="e-date" value="${e.date || ''}"></div>
+      <div><label class="label">Hora</label><input class="input" type="time" id="e-time" value="${e.time || ''}"></div>
+      <div><label class="label">Local</label><input class="input" id="e-venue" value="${esc(e.venue || '')}"></div>
+      <div><label class="label">Endereco</label><input class="input" id="e-address" value="${esc(e.address || '')}"></div>
+      <div><label class="label">De quem e o evento?</label><select class="input" id="e-owner">${['Meu', 'Cliente'].map(o => `<option ${e.owner === o ? 'selected' : ''}>${o}</option>`).join('')}</select></div>
+      <div><label class="label">Orcamento total (R$)</label><input class="input" type="number" step="0.01" id="e-budget" value="${e.budget || 0}"></div>
+      <div><label class="label">Nome do cliente ${isCli ? '' : '(se for de cliente)'}</label><input class="input" id="e-client" value="${esc(e.clientName || '')}"></div>
+      <div><label class="label">Contato do cliente</label><input class="input" id="e-contact" value="${esc(e.clientContact || '')}"></div>
+      <div class="md:col-span-2"><label class="label">Observacoes</label><textarea class="input" id="e-notes" rows="2">${esc(e.notes || '')}</textarea></div>
+      <div class="md:col-span-2 flex justify-end"><button class="btn btn-primary" id="e-save">Salvar informacoes</button></div>
+    </div>`;
+  }
+
+  function subEvVendors(e) {
+    const rows = (e.vendors || []).map(v => {
+      const contratado = Number(v.agreed) || Number(v.quoted) || 0;
+      const rest = Math.max(0, contratado - (Number(v.paid) || 0));
+      const late = rest > 0 && v.dueDate && v.dueDate < new Date().toISOString().slice(0, 10);
+      return `<tr class="${late ? 'bg-bad/5' : ''}">
+        <td><b>${esc(v.name)}</b>${v.contact ? `<div class="text-xs text-muted">${esc(v.contact)}</div>` : ''}</td>
+        <td><span class="chip">${esc(v.category || '-')}</span></td>
+        <td>${brl(v.quoted)}</td><td>${brl(contratado)}</td>
+        <td class="text-good">${brl(v.paid)}</td>
+        <td class="${rest > 0 ? 'text-warn' : 'text-good'}">${brl(rest)}</td>
+        <td>${dbr(v.dueDate)}${late ? ' <span class="badge bg-bad/20 text-red-300">atrasado</span>' : ''}</td>
+        <td class="text-right whitespace-nowrap"><button class="chip" data-vpay="${v.id}">💰</button> <button class="chip" data-vedit="${v.id}">✏️</button> <button class="chip" data-vdel="${v.id}">🗑️</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="8" class="text-muted text-center py-4">Nenhum fornecedor</td></tr>';
+    return `<div class="card overflow-hidden">
+      <div class="flex justify-between items-center p-4"><h3 class="font-semibold">Fornecedores e orcamento</h3><button class="btn btn-primary" id="v-add">+ Fornecedor</button></div>
+      <table><thead><tr><th>Fornecedor</th><th>Categoria</th><th>Orcado</th><th>Fechado</th><th>Pago</th><th>A pagar</th><th>Vencimento</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <p class="text-xs text-muted p-4">💰 = registrar pagamento (com opcao de lancar no Fluxo de Caixa do Radar)</p>
+    </div>`;
+  }
+
+  function subEvGuests(e, ce) {
+    const col = { 'Confirmado': 'bg-good/20 text-green-300', 'Recusado': 'bg-bad/20 text-red-300', 'Pendente': 'bg-panel2 text-muted' };
+    const rows = (e.guests || []).map(g => `<tr>
+      <td><b>${esc(g.name)}</b>${g.contact ? `<div class="text-xs text-muted">${esc(g.contact)}</div>` : ''}</td>
+      <td><span class="chip">${esc(g.group || '-')}</span></td>
+      <td>${Number(g.companions) || 0}</td>
+      <td>${1 + (Number(g.companions) || 0)}</td>
+      <td><button class="badge ${col[g.status] || col.Pendente}" data-gtog="${g.id}">${esc(g.status || 'Pendente')}</button></td>
+      <td class="text-right whitespace-nowrap"><button class="chip" data-gedit="${g.id}">✏️</button> <button class="chip" data-gdel="${g.id}">🗑️</button></td>
+    </tr>`).join('') || '<tr><td colspan="6" class="text-muted text-center py-4">Nenhum convidado</td></tr>';
+    return `<div class="card overflow-hidden">
+      <div class="flex justify-between items-center p-4"><h3 class="font-semibold">Convidados · ${ce.confirmedPeople} pessoas confirmadas de ${ce.invitedPeople}</h3><button class="btn btn-primary" id="g-add">+ Convidado</button></div>
+      <table><thead><tr><th>Nome</th><th>Grupo</th><th>Acompanhantes</th><th>Pessoas</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }
+
+  function subEvCheck(e) {
+    const today = new Date().toISOString().slice(0, 10);
+    const col = { 'Pendente': 'bg-panel2 text-muted', 'Em andamento': 'bg-warn/20 text-amber-300', 'Concluido': 'bg-good/20 text-green-300' };
+    const rows = (e.checklist || []).map(i => {
+      const late = i.status !== 'Concluido' && i.dueDate && i.dueDate < today;
+      return `<tr class="${late ? 'bg-bad/5' : ''}"><td>${esc(i.text)}</td>
+        <td>${dbr(i.dueDate)}${late ? ' <span class="badge bg-bad/20 text-red-300">atrasada</span>' : ''}</td>
+        <td><button class="badge ${col[i.status] || col.Pendente}" data-ctog="${i.id}">${esc(i.status || 'Pendente')}</button></td>
+        <td class="text-right"><button class="chip" data-cdel="${i.id}">🗑️</button></td></tr>`;
+    }).join('') || '<tr><td colspan="4" class="text-muted text-center py-4">Nenhuma tarefa</td></tr>';
+    return `<div class="card overflow-hidden">
+      <div class="flex justify-between items-center p-4"><h3 class="font-semibold">Checklist</h3><button class="btn btn-primary" id="c-add">+ Tarefa</button></div>
+      <table><thead><tr><th>Tarefa</th><th>Prazo</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }
+
+  function subEvFee(e, ce) {
+    const f = e.fee || { total: 0, installments: 1, receipts: [] };
+    const rows = (f.receipts || []).slice().reverse().map(r => `<tr><td>${dbr(r.date)}</td><td class="text-good">${brl(r.amount)}</td><td>${esc(r.note || '')}</td><td class="text-right"><button class="chip" data-rdel="${r.id}">🗑️</button></td></tr>`).join('') || '<tr><td colspan="4" class="text-muted text-center py-4">Nenhum recebimento</td></tr>';
+    return `<div class="card p-5">
+      <div class="flex justify-between items-center mb-3"><h3 class="font-semibold">Honorarios do cliente${e.clientName ? ' · ' + esc(e.clientName) : ''}</h3><button class="btn btn-primary" id="r-add">+ Recebimento</button></div>
+      <div class="grid md:grid-cols-2 gap-4 mb-4">
+        <div><label class="label">Valor combinado (R$)</label><input class="input" type="number" step="0.01" id="f-total" value="${f.total || 0}"></div>
+        <div><label class="label">Numero de parcelas</label><input class="input" type="number" min="1" id="f-inst" value="${f.installments || 1}"></div>
+      </div>
+      <div class="flex justify-end mb-4"><button class="btn btn-ghost" id="f-save">Salvar honorarios</button></div>
+      <div class="grid grid-cols-3 gap-4 mb-4">
+        ${statCard('Combinado', brl(ce.feeTotal))}
+        ${statCard('Recebido', brl(ce.feeReceived), null, 'text-good')}
+        ${statCard('A receber', brl(ce.feeToReceive), null, 'text-warn')}
+      </div>
+      <table><thead><tr><th>Data</th><th>Valor</th><th>Obs</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }
+
+  function bindEvSub(ce) {
+    const e = state.ev;
+    // Info
+    if ($('#e-save')) $('#e-save').addEventListener('click', () => {
+      e.name = $('#e-name').value || e.name; e.type = $('#e-type').value; e.status = $('#e-status').value;
+      e.date = $('#e-date').value; e.time = $('#e-time').value; e.venue = $('#e-venue').value; e.address = $('#e-address').value;
+      e.owner = $('#e-owner').value; e.budget = Number($('#e-budget').value) || 0;
+      e.clientName = $('#e-client').value; e.clientContact = $('#e-contact').value; e.notes = $('#e-notes').value;
+      toast('Salvo', 'ok'); saveEv();
+    });
+    // Fornecedores
+    const vFields = (v) => [
+      { name: 'name', label: 'Fornecedor', required: true, col: 'full', value: v && v.name },
+      { name: 'category', label: 'Categoria', type: 'select', value: v && v.category, options: EV_CATS.map(o => ({ value: o, label: o })) },
+      { name: 'contact', label: 'Contato', value: v && v.contact },
+      { name: 'quoted', label: 'Valor orcado (R$)', type: 'number', step: '0.01', value: v && v.quoted },
+      { name: 'agreed', label: 'Valor fechado (R$)', type: 'number', step: '0.01', value: v && v.agreed },
+      { name: 'paid', label: 'Ja pago (R$)', type: 'number', step: '0.01', value: v && v.paid },
+      { name: 'dueDate', label: 'Vencimento do pagamento', type: 'date', value: v && v.dueDate },
+      { name: 'status', label: 'Status', type: 'select', value: v && v.status, options: ['Orcando', 'Fechado', 'Pago'].map(o => ({ value: o, label: o })) },
+      { name: 'notes', label: 'Observacoes', col: 'full', value: v && v.notes }
+    ];
+    if ($('#v-add')) $('#v-add').addEventListener('click', () => formModal('Novo fornecedor', vFields(), async v => { (e.vendors = e.vendors || []).push(Object.assign({ id: genId() }, v)); closeModal(); saveEv(); }));
+    document.querySelectorAll('[data-vedit]').forEach(b => b.addEventListener('click', () => { const v = e.vendors.find(x => x.id === b.dataset.vedit); formModal('Editar fornecedor', vFields(v), async nv => { Object.assign(v, nv); closeModal(); saveEv(); }); }));
+    document.querySelectorAll('[data-vdel]').forEach(b => b.addEventListener('click', () => { e.vendors = e.vendors.filter(x => x.id !== b.dataset.vdel); saveEv(); }));
+    document.querySelectorAll('[data-vpay]').forEach(b => b.addEventListener('click', () => {
+      const v = e.vendors.find(x => x.id === b.dataset.vpay);
+      const rest = Math.max(0, (Number(v.agreed) || Number(v.quoted) || 0) - (Number(v.paid) || 0));
+      formModal('Registrar pagamento · ' + v.name, [
+        { name: 'amount', label: 'Valor pago (R$)', type: 'number', step: '0.01', required: true, value: rest || '' },
+        { name: 'date', label: 'Data', type: 'date', value: new Date().toISOString().slice(0, 10) },
+        { name: 'affectCashflow', label: 'Lancar no Fluxo de Caixa?', type: 'select', options: [{ value: '', label: 'Nao' }, { value: '1', label: 'Sim, como despesa' }] }
+      ], async val => { await api('POST', '/events/' + e.id + '/pay', { vendorId: v.id, amount: val.amount, date: val.date, affectCashflow: !!val.affectCashflow }); closeModal(); toast('Pagamento registrado', 'ok'); go('eventos'); });
+    }));
+    // Convidados
+    const gStatus = { 'Pendente': 'Confirmado', 'Confirmado': 'Recusado', 'Recusado': 'Pendente' };
+    const gFields = (g) => [
+      { name: 'name', label: 'Nome', required: true, col: 'full', value: g && g.name },
+      { name: 'group', label: 'Grupo', type: 'select', value: g && g.group, options: ['Familia', 'Amigos', 'Trabalho', 'Outros'].map(o => ({ value: o, label: o })) },
+      { name: 'companions', label: 'Acompanhantes', type: 'number', min: 0, value: (g && g.companions) || 0 },
+      { name: 'contact', label: 'Contato', value: g && g.contact },
+      { name: 'status', label: 'Status', type: 'select', value: g && g.status, options: ['Pendente', 'Confirmado', 'Recusado'].map(o => ({ value: o, label: o })) }
+    ];
+    if ($('#g-add')) $('#g-add').addEventListener('click', () => formModal('Novo convidado', gFields(), async v => { (e.guests = e.guests || []).push(Object.assign({ id: genId() }, v, { companions: Number(v.companions) || 0 })); closeModal(); saveEv(); }));
+    document.querySelectorAll('[data-gedit]').forEach(b => b.addEventListener('click', () => { const g = e.guests.find(x => x.id === b.dataset.gedit); formModal('Editar convidado', gFields(g), async v => { Object.assign(g, v, { companions: Number(v.companions) || 0 }); closeModal(); saveEv(); }); }));
+    document.querySelectorAll('[data-gdel]').forEach(b => b.addEventListener('click', () => { e.guests = e.guests.filter(x => x.id !== b.dataset.gdel); saveEv(); }));
+    document.querySelectorAll('[data-gtog]').forEach(b => b.addEventListener('click', () => { const g = e.guests.find(x => x.id === b.dataset.gtog); g.status = gStatus[g.status || 'Pendente']; saveEv(); }));
+    // Checklist
+    const cStatus = { 'Pendente': 'Em andamento', 'Em andamento': 'Concluido', 'Concluido': 'Pendente' };
+    if ($('#c-add')) $('#c-add').addEventListener('click', () => formModal('Nova tarefa', [
+      { name: 'text', label: 'Tarefa', required: true, col: 'full', placeholder: 'Ex: Reservar o local' },
+      { name: 'dueDate', label: 'Prazo', type: 'date' }
+    ], async v => { (e.checklist = e.checklist || []).push({ id: genId(), text: v.text, dueDate: v.dueDate, status: 'Pendente' }); closeModal(); saveEv(); }));
+    document.querySelectorAll('[data-ctog]').forEach(b => b.addEventListener('click', () => { const i = e.checklist.find(x => x.id === b.dataset.ctog); i.status = cStatus[i.status || 'Pendente']; saveEv(); }));
+    document.querySelectorAll('[data-cdel]').forEach(b => b.addEventListener('click', () => { e.checklist = e.checklist.filter(x => x.id !== b.dataset.cdel); saveEv(); }));
+    // Honorarios
+    if ($('#f-save')) $('#f-save').addEventListener('click', () => {
+      if (!e.fee) e.fee = { receipts: [] };
+      e.fee.total = Number($('#f-total').value) || 0; e.fee.installments = Number($('#f-inst').value) || 1;
+      toast('Salvo', 'ok'); saveEv();
+    });
+    if ($('#r-add')) $('#r-add').addEventListener('click', () => formModal('Registrar recebimento', [
+      { name: 'amount', label: 'Valor recebido (R$)', type: 'number', step: '0.01', required: true },
+      { name: 'date', label: 'Data', type: 'date', value: new Date().toISOString().slice(0, 10) },
+      { name: 'note', label: 'Observacao' },
+      { name: 'affectCashflow', label: 'Lancar no Fluxo de Caixa?', type: 'select', options: [{ value: '', label: 'Nao' }, { value: '1', label: 'Sim, como receita' }] }
+    ], async v => { await api('POST', '/events/' + e.id + '/receive', { amount: v.amount, date: v.date, note: v.note, affectCashflow: !!v.affectCashflow }); closeModal(); toast('Recebimento registrado', 'ok'); go('eventos'); }));
+    document.querySelectorAll('[data-rdel]').forEach(b => b.addEventListener('click', () => { e.fee.receipts = e.fee.receipts.filter(x => x.id !== b.dataset.rdel); saveEv(); }));
+  }
+
+
   // ---------------- Boot ----------------
-  if (state.token) { renderShell(); go('dashboard'); } else { renderAuth(); }
+  if (state.token) { state.app = 'hub'; renderHub(); } else { renderAuth(); }
 })();

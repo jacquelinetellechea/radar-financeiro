@@ -28,6 +28,7 @@ const fin = require('./finance');
 const proj = require('./projection');
 const importer = require('./importer');
 const projmod = require('./projects');
+const evmod = require('./events');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -393,6 +394,80 @@ app.post('/api/projects/:id/fund', (req, res) => {
   store.scheduleBackup();
   ok(res, { project: p, computed: projmod.computeProject(p) });
 });
+
+// ---------- Eventos ----------
+app.get('/api/events', (req, res) => ok(res, store.getData().events.map(evmod.eventSummary)));
+app.get('/api/events/:id', (req, res) => {
+  const e = store.getData().events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  const c = evmod.computeEvent(e);
+  ok(res, { event: e, computed: c, alerts: evmod.eventAlerts(e, c) });
+});
+app.post('/api/events', (req, res) => {
+  const d = store.getData();
+  const e = evmod.blankEvent(store.id(), (req.body && req.body.name) || 'Novo evento');
+  d.events.push(e);
+  store.scheduleBackup();
+  ok(res, e);
+});
+app.put('/api/events/:id', (req, res) => {
+  const d = store.getData();
+  const i = d.events.findIndex(x => x.id === req.params.id);
+  if (i < 0) return bad(res, 'Evento nao encontrado', 404);
+  d.events[i] = Object.assign({}, d.events[i], req.body || {}, { id: d.events[i].id, createdAt: d.events[i].createdAt });
+  store.scheduleBackup();
+  ok(res, d.events[i]);
+});
+app.delete('/api/events/:id', (req, res) => {
+  const d = store.getData();
+  d.events = d.events.filter(x => x.id !== req.params.id);
+  store.scheduleBackup();
+  ok(res, { success: true });
+});
+// pagamento a fornecedor (opcionalmente lancado no fluxo de caixa)
+app.post('/api/events/:id/pay', (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  const { vendorId, amount, date, affectCashflow } = req.body || {};
+  const v = (e.vendors || []).find(x => x.id === vendorId);
+  if (!v) return bad(res, 'Fornecedor nao encontrado', 404);
+  const amt = Number(amount);
+  if (!amt || amt <= 0) return bad(res, 'Informe um valor valido.');
+  v.paid = round2n((Number(v.paid) || 0) + amt);
+  const dateISO = date || new Date().toISOString().slice(0, 10);
+  if (affectCashflow) {
+    d.transactions.push({
+      id: store.id(), type: 'expense', description: 'Evento ' + e.name + ' - ' + v.name,
+      category: 'Eventos', amount: amt, dateISO, month: fin.monthKey(dateISO),
+      source: 'evento', createdAt: new Date().toISOString()
+    });
+  }
+  store.scheduleBackup();
+  ok(res, { event: e, computed: evmod.computeEvent(e) });
+});
+// recebimento de honorarios do cliente (opcionalmente lancado como receita)
+app.post('/api/events/:id/receive', (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  const { amount, date, note, affectCashflow } = req.body || {};
+  const amt = Number(amount);
+  if (!amt || amt <= 0) return bad(res, 'Informe um valor valido.');
+  const dateISO = date || new Date().toISOString().slice(0, 10);
+  if (!e.fee) e.fee = { total: 0, installments: 1, receipts: [] };
+  e.fee.receipts.push({ id: store.id(), date: dateISO, amount: amt, note: note || '' });
+  if (affectCashflow) {
+    d.transactions.push({
+      id: store.id(), type: 'income', description: 'Honorarios evento ' + e.name,
+      category: 'Eventos', amount: amt, dateISO, month: fin.monthKey(dateISO),
+      source: 'evento', createdAt: new Date().toISOString()
+    });
+  }
+  store.scheduleBackup();
+  ok(res, { event: e, computed: evmod.computeEvent(e) });
+});
+function round2n(n) { return Math.round((Number(n) + Number.EPSILON) * 100) / 100; }
 
 // ---------- Dashboard / Projecao / Relatorios ----------
 app.get('/api/dashboard', (req, res) => {

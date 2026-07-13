@@ -22,6 +22,7 @@ const EMPTY = {
   recurrings: [],
   transactions: [],
   projects: [],
+  events: [],
   meta: { createdAt: null, version: 1 }
 };
 
