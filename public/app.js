@@ -27,7 +27,7 @@
   const $ = sel => document.querySelector(sel);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   function toast(msg, type = 'info') {
-    const colors = { info: 'bg-panel2 border-line', ok: 'bg-good/15 border-good/40 text-green-200', err: 'bg-bad/15 border-bad/40 text-red-200' };
+    const colors = { info: 'bg-panel2 border-line', ok: 'bg-good/15 border-good/40 text-good', err: 'bg-bad/15 border-bad/40 text-bad' };
     const t = document.createElement('div');
     t.className = `card px-4 py-3 border ${colors[type] || colors.info} shadow-lg fade-in text-sm max-w-xs`;
     t.textContent = msg;
@@ -40,11 +40,11 @@
   function openModal(title, bodyHTML, opts = {}) {
     const root = document.getElementById('modal-root');
     root.innerHTML = `
-      <div class="fixed inset-0 z-40 bg-black/60 flex items-start md:items-center justify-center p-4 overflow-auto" id="modal-bg">
+      <div class="fixed inset-0 z-40 bg-ink/30 flex items-start md:items-center justify-center p-4 overflow-auto" id="modal-bg">
         <div class="card w-full ${opts.wide ? 'max-w-3xl' : 'max-w-lg'} my-8 fade-in" onclick="event.stopPropagation()">
           <div class="flex items-center justify-between px-5 py-4 border-b border-line">
             <h3 class="font-semibold text-lg">${esc(title)}</h3>
-            <button class="text-muted hover:text-white text-xl leading-none" id="modal-x">&times;</button>
+            <button class="text-muted hover:text-ink text-xl leading-none" id="modal-x">&times;</button>
           </div>
           <div class="p-5">${bodyHTML}</div>
         </div>
@@ -55,7 +55,7 @@
 
   function confirmModal(text, onYes) {
     openModal('Confirmar', `
-      <p class="text-slate-300 mb-5">${esc(text)}</p>
+      <p class="text-muted mb-5">${esc(text)}</p>
       <div class="flex justify-end gap-2">
         <button class="btn btn-ghost" id="c-no">Cancelar</button>
         <button class="btn btn-danger" id="c-yes">Excluir</button>
@@ -93,10 +93,10 @@
     });
   }
 
-  function statCard(label, value, sub, color = 'text-white') {
+  function statCard(label, value, sub, color = 'text-ink') {
     return `<div class="card p-4">
       <div class="text-xs uppercase tracking-wide text-muted">${esc(label)}</div>
-      <div class="text-2xl font-bold mt-1 ${color}">${value}</div>
+      <div class="text-2xl money mt-1 ${color}">${value}</div>
       ${sub ? `<div class="text-xs text-muted mt-1">${sub}</div>` : ''}
     </div>`;
   }
@@ -166,12 +166,13 @@
     const app = document.getElementById('app');
     app.innerHTML = `
       <div class="flex min-h-screen">
-        <aside class="hidden md:flex flex-col w-60 bg-panel border-r border-line p-4 gap-1 sticky top-0 h-screen">
-          <div class="flex items-center gap-2 px-2 mb-5">
-            <span class="inline-block w-8 h-8 rounded-lg flex items-center justify-center" style="background:${isEv ? '#22d3ee' : '#6366f1'}">${isEv ? '🎉' : '📡'}</span>
-            <div><div class="font-bold leading-tight">${isEv ? 'Eventos' : 'Radar'}</div><div class="text-[10px] text-muted -mt-0.5">${isEv ? 'Organizacao' : 'Financeiro'}</div></div>
+        <aside class="hidden md:flex flex-col w-64 bg-sand border-r border-line p-4 gap-1 sticky top-0 h-screen">
+          <div class="flex items-center gap-3 px-2 mb-6 mt-2">
+            <span class="w-11 h-11 rounded-2xl flex items-center justify-center text-white text-lg font-display" style="background:#B9502C">${isEv ? 'e' : 'r'}</span>
+            <div><div class="font-display text-lg leading-tight">${isEv ? 'Eventos' : 'Radar'}</div><div class="text-[10px] tracking-widest text-muted uppercase">${isEv ? 'Organizacao' : 'Financeiro'}</div></div>
           </div>
-          <div class="nav-link mb-2" id="to-hub"><span>←</span>Projetos</div>
+          <div class="nav-link" id="to-hub"><span>←</span>Projetos</div>
+          <div class="nav-label">Este projeto</div>
           <nav id="nav" class="flex-1 space-y-1 overflow-auto">
             ${NAV.map(([k, l, i]) => `<div class="nav-link" data-page="${k}"><span>${i}</span>${l}</div>`).join('')}
           </nav>
@@ -202,7 +203,7 @@
     setActive();
     const c = $('#content');
     c.innerHTML = `<div class="text-muted py-20 text-center">Carregando…</div>`;
-    try { await PAGES[page](); } catch (e) { c.innerHTML = `<div class="card p-6 text-red-300">Erro: ${esc(e.message)}</div>`; }
+    try { await PAGES[page](); } catch (e) { c.innerHTML = `<div class="card p-6 text-bad">Erro: ${esc(e.message)}</div>`; }
   }
 
   function pageHeader(title, subtitle, actionsHTML = '') {
@@ -219,7 +220,7 @@
   PAGES.dashboard = async function () {
     const d = await api('GET', '/dashboard');
     const c = $('#content');
-    const alertColor = { high: 'border-bad/40 bg-bad/10 text-red-200', medium: 'border-warn/40 bg-warn/10 text-amber-200', low: 'border-line bg-panel2' };
+    const alertColor = { high: 'border-bad/40 bg-bad/10 text-bad', medium: 'border-warn/40 bg-warn/10 text-warn', low: 'border-line bg-panel2' };
     c.innerHTML = pageHeader('Dashboard', 'Visao geral do seu presente e futuro financeiro') + `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         ${statCard('Saldo atual', brl(d.currentBalance), mesLabelFull(d.month), d.currentBalance >= 0 ? 'text-good' : 'text-bad')}
@@ -249,7 +250,7 @@
         <h3 class="font-semibold mb-3">Entradas x Saidas projetadas</h3>
         <canvas id="chart-io" height="90"></canvas>
       </div>
-      ${d.projects && d.projects.length ? `<div class="card p-5 mb-6"><h3 class="font-semibold mb-4">Projetos de Vida</h3><div class="grid md:grid-cols-2 gap-4">${d.projects.map(pr => `<div class="bg-panel2 rounded-xl p-4 border border-line cursor-pointer" data-goproj="${pr.id}"><div class="flex justify-between items-center"><b>${esc(pr.name)}</b><span class="chip">${pr.percent}%</span></div><div class="progress my-2"><div style="width:${pr.percent}%;background:#22d3ee"></div></div><div class="text-xs text-muted flex justify-between"><span>${brl(pr.saldo)} / ${brl(pr.target)}</span><span>${pr.daysLeft != null ? pr.daysLeft + ' dias' : ''}</span></div></div>`).join('')}</div></div>` : ''}
+      ${d.projects && d.projects.length ? `<div class="card p-5 mb-6"><h3 class="font-semibold mb-4">Projetos de Vida</h3><div class="grid md:grid-cols-2 gap-4">${d.projects.map(pr => `<div class="bg-panel2 rounded-xl p-4 border border-line cursor-pointer" data-goproj="${pr.id}"><div class="flex justify-between items-center"><b>${esc(pr.name)}</b><span class="chip">${pr.percent}%</span></div><div class="progress my-2"><div style="width:${pr.percent}%;background:#C4622F"></div></div><div class="text-xs text-muted flex justify-between"><span>${brl(pr.saldo)} / ${brl(pr.target)}</span><span>${pr.daysLeft != null ? pr.daysLeft + ' dias' : ''}</span></div></div>`).join('')}</div></div>` : ''}
       <div class="card p-5">
         <h3 class="font-semibold mb-4">Limites dos cartoes</h3>
         <div class="grid md:grid-cols-2 gap-4">
@@ -257,16 +258,16 @@
         </div>
       </div>`;
     const labels = d.projection.map(p => mesLabel(p.month));
-    makeChart('chart-balance', 'line', labels, [{ label: 'Saldo', data: d.projection.map(p => p.balance), borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.15)', fill: true, tension: .3 }]);
+    makeChart('chart-balance', 'line', labels, [{ label: 'Saldo', data: d.projection.map(p => p.balance), borderColor: '#B9502C', backgroundColor: 'rgba(185,80,44,.12)', fill: true, tension: .3 }]);
     makeChart('chart-io', 'bar', labels, [
-      { label: 'Entradas', data: d.projection.map(p => p.income), backgroundColor: '#22c55e' },
-      { label: 'Saidas', data: d.projection.map(p => p.expense), backgroundColor: '#ef4444' }
+      { label: 'Entradas', data: d.projection.map(p => p.income), backgroundColor: '#2F7A55' },
+      { label: 'Saidas', data: d.projection.map(p => p.expense), backgroundColor: '#B23A2E' }
     ]);
     document.querySelectorAll('[data-goproj]').forEach(el => el.addEventListener('click', () => { state.projId = el.dataset.goproj; state.vidaTab = 'info'; go('vida'); }));
   };
 
   function cardBar(c) {
-    const col = c.usagePct >= 80 ? '#ef4444' : c.usagePct >= 60 ? '#f59e0b' : '#22c55e';
+    const col = c.usagePct >= 80 ? '#B23A2E' : c.usagePct >= 60 ? '#B07A20' : '#2F7A55';
     return `<div class="bg-panel2 rounded-xl p-4 border border-line">
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full" style="background:${esc(c.color)}"></span><b>${esc(c.name)}</b></div>
@@ -275,7 +276,7 @@
       <div class="progress mb-2"><div style="width:${c.usagePct}%;background:${col}"></div></div>
       <div class="flex justify-between text-xs text-muted">
         <span>Disponivel: <b class="text-good">${brl(c.available)}</b></span>
-        <span>Fatura atual: <b class="text-slate-200">${brl(c.nextInvoice)}</b></span>
+        <span>Fatura atual: <b class="text-ink">${brl(c.nextInvoice)}</b></span>
       </div>
     </div>`;
   }
@@ -286,8 +287,8 @@
     state.charts[id] = new Chart(el, {
       type, data: { labels, datasets },
       options: {
-        responsive: true, plugins: { legend: { labels: { color: '#aab3cc' } } },
-        scales: { x: { ticks: { color: '#8b95b0' }, grid: { color: '#1a2233' } }, y: { ticks: { color: '#8b95b0', callback: v => 'R$' + (v / 1000).toFixed(0) + 'k' }, grid: { color: '#1a2233' } } }
+        responsive: true, plugins: { legend: { labels: { color: '#6F6252' } } },
+        scales: { x: { ticks: { color: '#A2957F' }, grid: { color: '#EADFCE' } }, y: { ticks: { color: '#A2957F', callback: v => 'R$' + (v / 1000).toFixed(0) + 'k' }, grid: { color: '#EADFCE' } } }
       }
     });
   }
@@ -322,7 +323,7 @@
         <div><div class="text-muted text-xs">Comprometido</div><b class="${col}">${brl(c.committed)}</b></div>
         <div><div class="text-muted text-xs">Fatura atual</div><b>${brl(c.nextInvoice)}</b></div>
       </div>
-      <div class="progress mb-2"><div style="width:${c.usagePct}%;background:${c.usagePct >= 80 ? '#ef4444' : c.usagePct >= 60 ? '#f59e0b' : '#22c55e'}"></div></div>
+      <div class="progress mb-2"><div style="width:${c.usagePct}%;background:${c.usagePct >= 80 ? '#B23A2E' : c.usagePct >= 60 ? '#B07A20' : '#2F7A55'}"></div></div>
       <div class="flex justify-between text-xs text-muted"><span>Fecha dia ${c.closingDay}</span><span>Vence dia ${c.dueDay}</span></div>
     </div>`;
   }
@@ -331,7 +332,7 @@
       { name: 'name', label: 'Nome do cartao', required: true, value: card?.name, placeholder: 'Ex: Nubank' },
       { name: 'bank', label: 'Banco emissor', value: card?.bank, placeholder: 'Ex: Nu Pagamentos' },
       { name: 'limitTotal', label: 'Limite total (R$)', type: 'number', step: '0.01', required: true, value: card?.limitTotal },
-      { name: 'color', label: 'Cor', type: 'color', value: card?.color || '#6366f1' },
+      { name: 'color', label: 'Cor', type: 'color', value: card?.color || '#B9502C' },
       { name: 'closingDay', label: 'Dia de fechamento', type: 'number', min: 1, value: card?.closingDay || 1 },
       { name: 'dueDay', label: 'Dia de vencimento', type: 'number', min: 1, value: card?.dueDay || 10 },
     ], async v => {
@@ -443,7 +444,7 @@
         <div><div class="text-muted text-xs">Recebido</div><b class="text-good">${brl(l.received)}</b></div>
         <div><div class="text-muted text-xs">Pendente</div><b class="text-warn">${brl(l.pending)}</b></div>
       </div>
-      <div class="progress mb-2"><div style="width:${pct}%;background:#22c55e"></div></div>
+      <div class="progress mb-2"><div style="width:${pct}%;background:#2F7A55"></div></div>
       <div class="flex justify-between text-xs text-muted">
         <span>${pct}% recebido</span>
         ${l.overdue > 0 ? `<span class="text-bad">Atrasado: ${brl(l.overdue)}</span>` : l.nextDue ? `<span>Proximo: ${l.nextDue.split('-').reverse().join('/')}</span>` : '<span class="text-good">Quitado</span>'}
@@ -465,7 +466,7 @@
   function loanDetail(l) {
     openModal(`Reembolsos: ${l.person}`, `<div class="max-h-96 overflow-auto"><table><thead><tr><th>#</th><th>Vencimento</th><th>Valor</th><th>Status</th></tr></thead><tbody>
       ${l.items.map(it => `<tr><td>${it.number}</td><td>${it.dueISO.split('-').reverse().join('/')}</td><td>${brl(it.amount)}</td>
-        <td><button class="badge ${it.settled ? 'bg-good/20 text-green-300' : 'bg-panel2 text-muted'}" data-rec="${it.number}">${it.settled ? '✓ Recebido' : 'Marcar recebido'}</button></td></tr>`).join('')}
+        <td><button class="badge ${it.settled ? 'bg-good/20 text-good' : 'bg-panel2 text-muted'}" data-rec="${it.number}">${it.settled ? '✓ Recebido' : 'Marcar recebido'}</button></td></tr>`).join('')}
     </tbody></table></div>`, { wide: true });
     document.querySelectorAll('[data-rec]').forEach(b => b.addEventListener('click', async () => { await api('POST', `/loans/${l.id}/receive/${b.dataset.rec}`); closeModal(); toast('Atualizado', 'ok'); go('emprestimos'); }));
   }
@@ -489,7 +490,7 @@
           <td><span class="chip">${l.source === 'installment' ? 'Cartao/parcela' : 'Emprestimo'}</span></td>
           <td>${brl(l.total)}</td><td class="text-good">${brl(l.received)}</td><td class="text-warn">${brl(l.pending)}</td>
           <td>${l.nextDue ? l.nextDue.split('-').reverse().join('/') : '—'}</td>
-          <td>${l.overdue > 0 ? '<span class="badge bg-bad/20 text-red-300">Atrasado</span>' : l.pending === 0 ? '<span class="badge bg-good/20 text-green-300">Quitado</span>' : '<span class="badge bg-panel2 text-muted">Em dia</span>'}</td>
+          <td>${l.overdue > 0 ? '<span class="badge bg-bad/20 text-bad">Atrasado</span>' : l.pending === 0 ? '<span class="badge bg-good/20 text-good">Quitado</span>' : '<span class="badge bg-panel2 text-muted">Em dia</span>'}</td>
         </tr>`).join('') : `<tr><td colspan="8" class="text-center text-muted py-8">Nenhum valor a receber.</td></tr>`}</tbody></table>
       </div>`;
   };
@@ -511,7 +512,7 @@
       const evs = byDay[day] || [];
       cells += `<div class="bg-panel2 border border-line rounded-lg p-1.5 min-h-[86px] text-xs">
         <div class="text-muted mb-1">${day}</div>
-        ${evs.slice(0, 4).map(e => `<div class="truncate ${e.type === 'income' ? 'text-good' : 'text-red-300'}" title="${esc(e.label)} - ${brl(e.amount)}">${e.type === 'income' ? '▲' : '▼'} ${brl(e.amount)}</div>`).join('')}
+        ${evs.slice(0, 4).map(e => `<div class="truncate ${e.type === 'income' ? 'text-good' : 'text-bad'}" title="${esc(e.label)} - ${brl(e.amount)}">${e.type === 'income' ? '▲' : '▼'} ${brl(e.amount)}</div>`).join('')}
         ${evs.length > 4 ? `<div class="text-muted">+${evs.length - 4}</div>` : ''}
       </div>`;
     }
@@ -533,7 +534,7 @@
         <div class="space-y-1 max-h-72 overflow-auto">
           ${data.events.length ? data.events.map(e => `<div class="flex justify-between text-sm border-b border-line/50 py-1.5">
             <span>Dia ${e.day} · <span class="chip">${esc(e.kind)}</span> ${esc(e.label)}</span>
-            <b class="${e.type === 'income' ? 'text-good' : 'text-red-300'}">${e.type === 'income' ? '+' : '-'}${brl(e.amount)}</b></div>`).join('') : '<p class="text-muted text-sm">Sem eventos.</p>'}
+            <b class="${e.type === 'income' ? 'text-good' : 'text-bad'}">${e.type === 'income' ? '+' : '-'}${brl(e.amount)}</b></div>`).join('') : '<p class="text-muted text-sm">Sem eventos.</p>'}
         </div>
       </div>`;
     $('#prev').addEventListener('click', () => PAGES.calendario(prev));
@@ -553,14 +554,14 @@
           <td><b>${mesLabel(p.month)}</b></td><td class="text-good">${brl(p.income)}</td>
           <td class="text-bad">${brl(p.expense)}</td><td>${brl(p.cardsInvoice)}</td>
           <td class="${p.net >= 0 ? 'text-good' : 'text-bad'}">${brl(p.net)}</td>
-          <td class="${p.balance >= 0 ? 'text-good' : 'text-bad'}"><b>${brl(p.balance)}</b> ${p.risk ? '<span class="badge bg-bad/20 text-red-300 ml-1">risco</span>' : ''}</td>
+          <td class="${p.balance >= 0 ? 'text-good' : 'text-bad'}"><b>${brl(p.balance)}</b> ${p.risk ? '<span class="badge bg-bad/20 text-bad ml-1">risco</span>' : ''}</td>
         </tr>`).join('')}</tbody></table>
       </div>`;
     const labels = proj.map(p => mesLabel(p.month));
     makeChart('chart-flux', 'line', labels, [
-      { label: 'Saldo acumulado', data: proj.map(p => p.balance), borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.15)', fill: true, tension: .3 },
-      { label: 'Entradas', data: proj.map(p => p.income), borderColor: '#22c55e', tension: .3 },
-      { label: 'Saidas', data: proj.map(p => p.expense), borderColor: '#ef4444', tension: .3 },
+      { label: 'Saldo acumulado', data: proj.map(p => p.balance), borderColor: '#B9502C', backgroundColor: 'rgba(185,80,44,.12)', fill: true, tension: .3 },
+      { label: 'Entradas', data: proj.map(p => p.income), borderColor: '#2F7A55', tension: .3 },
+      { label: 'Saidas', data: proj.map(p => p.expense), borderColor: '#B23A2E', tension: .3 },
     ]);
     document.querySelectorAll('[data-n]').forEach(b => b.addEventListener('click', () => PAGES.fluxo(+b.dataset.n)));
   };
@@ -574,7 +575,7 @@
         <table><thead><tr><th>Descricao</th><th>Tipo</th><th>Categoria</th><th>Valor</th><th>Dia</th><th>Inicio</th><th></th></tr></thead>
         <tbody>${recs.length ? recs.map(r => `<tr>
           <td><b>${esc(r.description)}</b></td>
-          <td>${r.type === 'income' ? '<span class="badge bg-good/20 text-green-300">Receita</span>' : '<span class="badge bg-bad/20 text-red-300">Despesa</span>'}</td>
+          <td>${r.type === 'income' ? '<span class="badge bg-good/20 text-good">Receita</span>' : '<span class="badge bg-bad/20 text-bad">Despesa</span>'}</td>
           <td><span class="chip">${esc(r.category)}</span></td><td>${brl(r.amount)}</td><td>${r.dayOfMonth}</td><td>${mesLabel(r.startMonth)}</td>
           <td class="text-right whitespace-nowrap"><button class="chip" data-edit="${r.id}">✏️</button> <button class="chip" data-del="${r.id}">🗑️</button></td>
         </tr>`).join('') : `<tr><td colspan="7" class="text-center text-muted py-8">Nenhuma conta recorrente.</td></tr>`}</tbody></table>
@@ -619,7 +620,7 @@
       try {
         const res = await api('POST', '/import/parse', fd, true);
         renderImportPreview(res, $('#imp-card').value);
-      } catch (e) { $('#imp-result').innerHTML = `<div class="card p-4 text-red-300">${esc(e.message)}</div>`; }
+      } catch (e) { $('#imp-result').innerHTML = `<div class="card p-4 text-bad">${esc(e.message)}</div>`; }
     });
   };
   function renderImportPreview(res, cardId) {
@@ -636,7 +637,7 @@
         <tbody>${window._imp.map((it, idx) => `<tr class="${it.duplicate ? 'opacity-60' : ''}">
           <td><input type="checkbox" data-skip="${idx}" ${it.skip ? '' : 'checked'}/></td>
           <td>${it.date.split('-').reverse().join('/')}</td>
-          <td>${esc(it.description)} ${it.duplicate ? '<span class="badge bg-warn/20 text-amber-300">ja cadastrado</span>' : ''}</td><td><span class="chip">${esc(it.category)}</span></td>
+          <td>${esc(it.description)} ${it.duplicate ? '<span class="badge bg-warn/20 text-warn">ja cadastrado</span>' : ''}</td><td><span class="chip">${esc(it.category)}</span></td>
           <td>${it.installment ? it.installment.current + '/' + it.installment.total : '1x'}</td>
           <td class="${it.type === 'income' ? 'text-good' : ''}">${brl(it.amount)}</td>
         </tr>`).join('')}</tbody></table></div>
@@ -665,12 +666,12 @@
         <div class="card p-5"><h3 class="font-semibold mb-3">Cartoes mais utilizados</h3><canvas id="chart-cards" height="200"></canvas></div>
       </div>
       <div class="card p-5"><h3 class="font-semibold mb-3">Fluxo de caixa (${months} meses)</h3><canvas id="chart-rep-flux" height="90"></canvas></div>`;
-    const palette = ['#6366f1', '#22d3ee', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#14b8a6', '#eab308'];
-    new Chart($('#chart-cat'), { type: 'doughnut', data: { labels: cats.map(c => c[0]), datasets: [{ data: cats.map(c => c[1]), backgroundColor: palette }] }, options: { plugins: { legend: { position: 'right', labels: { color: '#aab3cc' } } } } });
-    makeChart('chart-cards', 'bar', rep.cardUsage.map(c => c.name), [{ label: 'Total', data: rep.cardUsage.map(c => c.total), backgroundColor: '#6366f1' }]);
+    const palette = ['#B9502C', '#C4622F', '#2F7A55', '#B07A20', '#B23A2E', '#8B5E3C', '#C97B5A', '#5B8C7B', '#C9A227'];
+    new Chart($('#chart-cat'), { type: 'doughnut', data: { labels: cats.map(c => c[0]), datasets: [{ data: cats.map(c => c[1]), backgroundColor: palette }] }, options: { plugins: { legend: { position: 'right', labels: { color: '#6F6252' } } } } });
+    makeChart('chart-cards', 'bar', rep.cardUsage.map(c => c.name), [{ label: 'Total', data: rep.cardUsage.map(c => c.total), backgroundColor: '#B9502C' }]);
     makeChart('chart-rep-flux', 'bar', rep.cashflow.map(p => mesLabel(p.month)), [
-      { label: 'Entradas', data: rep.cashflow.map(p => p.income), backgroundColor: '#22c55e' },
-      { label: 'Saidas', data: rep.cashflow.map(p => p.expense), backgroundColor: '#ef4444' }
+      { label: 'Entradas', data: rep.cashflow.map(p => p.income), backgroundColor: '#2F7A55' },
+      { label: 'Saidas', data: rep.cashflow.map(p => p.expense), backgroundColor: '#B23A2E' }
     ]);
     document.querySelectorAll('[data-m]').forEach(b => b.addEventListener('click', () => PAGES.relatorios(+b.dataset.m)));
   };
@@ -705,11 +706,11 @@
         ${statCard('Pior saldo (12m)', brl(r.worstMonth.balance), mesLabelFull(r.worstMonth.month), r.worstMonth.balance >= 0 ? 'text-good' : 'text-bad')}
         ${statCard('Uso do cartao apos', r.cardAfter.usagePct + '%', `antes: ${r.cardBefore.usagePct}%`, r.cardAfter.usagePct >= 80 ? 'text-bad' : 'text-good')}
       </div>
-      ${r.worstMonth.balance < 0 ? '<div class="card p-4 mb-5 border-bad/40 bg-bad/10 text-red-200">⚠️ Atencao: esta compra deixa seu saldo projetado negativo em algum mes.</div>' : '<div class="card p-4 mb-5 border-good/40 bg-good/10 text-green-200">✅ Esta compra cabe no seu fluxo projetado.</div>'}
+      ${r.worstMonth.balance < 0 ? '<div class="card p-4 mb-5 border-bad/40 bg-bad/10 text-bad">⚠️ Atencao: esta compra deixa seu saldo projetado negativo em algum mes.</div>' : '<div class="card p-4 mb-5 border-good/40 bg-good/10 text-good">✅ Esta compra cabe no seu fluxo projetado.</div>'}
       <div class="card p-5"><h3 class="font-semibold mb-3">Saldo projetado: antes x depois</h3><canvas id="chart-sim" height="90"></canvas></div>`;
     makeChart('chart-sim', 'line', r.before.map(p => mesLabel(p.month)), [
-      { label: 'Antes', data: r.before.map(p => p.balance), borderColor: '#8b95b0', tension: .3 },
-      { label: 'Depois da compra', data: r.after.map(p => p.balance), borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.15)', fill: true, tension: .3 }
+      { label: 'Antes', data: r.before.map(p => p.balance), borderColor: '#A2957F', tension: .3 },
+      { label: 'Depois da compra', data: r.after.map(p => p.balance), borderColor: '#B9502C', backgroundColor: 'rgba(185,80,44,.12)', fill: true, tension: .3 }
     ]);
   }
 
@@ -739,7 +740,7 @@
         </div>
         <div class="card p-6">
           <h3 class="font-semibold mb-4">Conta</h3>
-          <p class="text-sm text-muted mb-1">Usuario: <b class="text-slate-200">${esc(state.email)}</b></p>
+          <p class="text-sm text-muted mb-1">Usuario: <b class="text-ink">${esc(state.email)}</b></p>
           <button class="btn btn-danger mt-3" id="cfg-logout">Sair</button>
         </div>
       </div>`;
@@ -792,7 +793,7 @@
     const p = full.project; state.proj = p; const cp = full.computed; const alerts = full.alerts;
     if (!state.vidaTab) state.vidaTab = 'info';
     const opts = list.map(x => `<option value="${x.id}" ${x.id === state.projId ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
-    const ac = { high: 'border-bad/40 bg-bad/10 text-red-200', medium: 'border-warn/40 bg-warn/10 text-amber-200', low: 'border-line bg-panel2' };
+    const ac = { high: 'border-bad/40 bg-bad/10 text-bad', medium: 'border-warn/40 bg-warn/10 text-warn', low: 'border-line bg-panel2' };
     c.innerHTML = pageHeader('Projeto de Vida', p.description || 'Planejamento do seu objetivo',
       `<select class="input w-auto" id="proj-sel">${opts}</select> <button class="btn btn-primary" id="np">+ Novo</button> <button class="btn btn-ghost" id="dp">🗑️</button>`)
       + `
@@ -808,7 +809,7 @@
         ${statCard('Compras', cp.shopDone + '/' + cp.shopTotal, cp.shopPercent + '% feitas · pago ' + brl(cp.shopPaid))}
         ${statCard('Checklist', cp.checkPercent + '%', cp.checkDone + '/' + cp.checklistTotal + ' itens')}
       </div>
-      <div class="card p-3 mb-4"><div class="progress"><div style="width:${cp.percent}%;background:#22c55e"></div></div>
+      <div class="card p-3 mb-4"><div class="progress"><div style="width:${cp.percent}%;background:#2F7A55"></div></div>
         <div class="text-xs text-muted mt-1">${cp.percent}% da meta financeira · Prioridade ${esc(p.priority)} · Status ${esc(p.status)}</div></div>
       ${alerts.length ? `<div class="space-y-2 mb-4">${alerts.map(a => `<div class="border rounded-lg px-3 py-2 text-sm ${ac[a.level]}">${esc(a.text)}</div>`).join('')}</div>` : ''}
       <div class="flex gap-1 flex-wrap mb-4">${VIDA_TABS.map(([k, l]) => `<button class="btn ${k === state.vidaTab ? 'btn-primary' : 'btn-ghost'}" data-tab="${k}">${l}</button>`).join('')}</div>
@@ -884,7 +885,7 @@
     const rows = (p.shopping || []).map(i => `<tr>
       <td><b>${esc(i.name)}</b></td><td><span class="chip">${esc(i.category || '-')}</span></td><td>${esc(i.priority || '-')}</td>
       <td>${brl(i.estimated)}</td><td class="text-good">${brl(i.paid)}</td><td>${esc(i.store || '')}</td><td>${dbr(i.dueDate)}</td>
-      <td><span class="badge ${(i.status === 'Comprado' || i.status === 'Concluido') ? 'bg-good/20 text-green-300' : 'bg-panel2 text-muted'}">${esc(i.status || 'Pendente')}</span></td>
+      <td><span class="badge ${(i.status === 'Comprado' || i.status === 'Concluido') ? 'bg-good/20 text-good' : 'bg-panel2 text-muted'}">${esc(i.status || 'Pendente')}</span></td>
       <td class="text-right whitespace-nowrap"><button class="chip" data-shop-done="${i.id}">✓</button> <button class="chip" data-shop-edit="${i.id}">✏️</button> <button class="chip" data-shop-del="${i.id}">🗑️</button></td>
     </tr>`).join('') || '<tr><td colspan="9" class="text-muted text-center py-4">Nenhum item</td></tr>';
     return `<div class="card overflow-hidden">
@@ -896,7 +897,7 @@
   // ----- Checklist -----
   function subChecklist(p) {
     const next = { 'Pendente': 'Em andamento', 'Em andamento': 'Concluido', 'Concluido': 'Pendente' };
-    const col = { 'Pendente': 'bg-panel2 text-muted', 'Em andamento': 'bg-warn/20 text-amber-300', 'Concluido': 'bg-good/20 text-green-300' };
+    const col = { 'Pendente': 'bg-panel2 text-muted', 'Em andamento': 'bg-warn/20 text-warn', 'Concluido': 'bg-good/20 text-good' };
     const rows = (p.checklist || []).map(i => `<tr><td>${esc(i.text)}</td>
       <td><button class="badge ${col[i.status] || col.Pendente}" data-chk="${i.id}">${esc(i.status || 'Pendente')}</button></td>
       <td class="text-right"><button class="chip" data-chk-del="${i.id}">🗑️</button></td></tr>`).join('') || '<tr><td colspan="3" class="text-muted text-center py-4">Nenhum item</td></tr>';
@@ -922,8 +923,8 @@
   // ----- Metas -----
   function subMetas(p) {
     const rows = (p.goals || []).map(g => `<tr><td><b>${esc(g.text)}</b></td><td>${dbr(g.deadline)}</td>
-      <td><div class="progress" style="width:90px"><div style="width:${g.percent || 0}%;background:#6366f1"></div></div><span class="text-xs text-muted">${g.percent || 0}%</span></td>
-      <td><span class="badge ${g.status === 'Concluido' ? 'bg-good/20 text-green-300' : 'bg-panel2 text-muted'}">${esc(g.status || 'Pendente')}</span></td>
+      <td><div class="progress" style="width:90px"><div style="width:${g.percent || 0}%;background:#B9502C"></div></div><span class="text-xs text-muted">${g.percent || 0}%</span></td>
+      <td><span class="badge ${g.status === 'Concluido' ? 'bg-good/20 text-good' : 'bg-panel2 text-muted'}">${esc(g.status || 'Pendente')}</span></td>
       <td class="text-right whitespace-nowrap"><button class="chip" data-goal-edit="${g.id}">✏️</button> <button class="chip" data-goal-del="${g.id}">🗑️</button></td></tr>`).join('') || '<tr><td colspan="5" class="text-muted text-center py-4">Nenhuma meta</td></tr>';
     return `<div class="card overflow-hidden"><div class="flex justify-between items-center p-4"><h3 class="font-semibold">Metas mensais</h3><button class="btn btn-primary" id="goal-add">+ Meta</button></div>
       <table><thead><tr><th>Meta</th><th>Prazo</th><th>Progresso</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -972,7 +973,7 @@
     if ($('#fund-chart')) {
       const f = p.fund || { initial: 0, entries: [] }; let run = Number(f.initial || 0); const labels = ['inicio']; const dd = [run];
       (f.entries || []).forEach(e => { run += (e.type === 'resgate' ? -1 : 1) * Number(e.amount || 0); labels.push((e.date || '').slice(5)); dd.push(Math.round(run * 100) / 100); });
-      makeChart('fund-chart', 'line', labels, [{ label: 'Saldo do fundo', data: dd, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,.15)', fill: true, tension: .3 }]);
+      makeChart('fund-chart', 'line', labels, [{ label: 'Saldo do fundo', data: dd, borderColor: '#2F7A55', backgroundColor: 'rgba(47,122,85,.12)', fill: true, tension: .3 }]);
     }
     // Compras
     const shopFields = (it) => [
@@ -1025,7 +1026,7 @@
     return `<div class="card p-6 cursor-pointer hover:border-accent transition" data-hub="${key}" style="border-top:3px solid ${color}">
       <div class="flex justify-between items-start mb-4">
         <span class="w-11 h-11 rounded-xl flex items-center justify-center text-xl" style="background:${color}33">${icon}</span>
-        <span class="badge bg-good/20 text-green-300">ATIVO</span>
+        <span class="badge bg-good/20 text-good">ATIVO</span>
       </div>
       <h3 class="text-xl font-bold">${esc(title)}</h3>
       <p class="text-accent2 text-sm mb-3">${esc(sub)}</p>
@@ -1037,7 +1038,7 @@
     const app = document.getElementById('app');
     app.innerHTML = `
       <div class="min-h-screen">
-        <header class="flex items-center justify-between px-6 py-4 border-b border-line bg-panel">
+        <header class="flex items-center justify-between px-6 py-4 border-b border-line bg-sand">
           <div class="flex items-center gap-2 font-bold"><span class="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">🗂️</span> Meus Projetos</div>
           <div class="flex items-center gap-4 text-sm text-muted">
             <span class="hidden md:inline">${esc(state.email || '')}</span>
@@ -1045,11 +1046,11 @@
           </div>
         </header>
         <div class="max-w-6xl mx-auto px-6 py-14 fade-in">
-          <h1 class="text-3xl md:text-4xl font-extrabold mb-2">Qual projeto voce quer abrir?</h1>
+          <h1 class="text-4xl md:text-5xl font-display mb-3">Qual projeto voce quer abrir?</h1>
           <p class="text-muted mb-10">Cada projeto abre o seu proprio painel, com dados e telas independentes.</p>
           <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            ${hubCard('radar', 'Radar Financeiro', 'Controle financeiro pessoal', 'Cartoes, parcelamentos, emprestimos, fluxo de caixa projetado, importacao de faturas, relatorios e Projeto de Vida.', '📡', '#6366f1')}
-            ${hubCard('eventos', 'Eventos', 'Organizacao de eventos', 'Eventos seus ou de clientes: orcamento, fornecedores, convidados, checklist com prazos e honorarios.', '🎉', '#22d3ee')}
+            ${hubCard('radar', 'Radar Financeiro', 'Controle financeiro pessoal', 'Cartoes, parcelamentos, emprestimos, fluxo de caixa projetado, importacao de faturas, relatorios e Projeto de Vida.', '📡', '#B9502C')}
+            ${hubCard('eventos', 'Eventos', 'Organizacao de eventos', 'Eventos seus ou de clientes: orcamento, fornecedores, convidados, checklist com prazos e honorarios.', '🎉', '#C4622F')}
           </div>
         </div>
       </div>`;
@@ -1072,18 +1073,23 @@
       async v => { const e = await api('POST', '/events', v); state.evId = e.id; state.evTab = 'info'; closeModal(); toast('Evento criado', 'ok'); go('eventos'); });
   }
   function evCard(e) {
-    return `<div class="card p-5 cursor-pointer hover:border-accent transition" data-ev="${e.id}">
-      <div class="flex justify-between items-start mb-2">
-        <div><h3 class="font-bold">${esc(e.name)}</h3><p class="text-muted text-xs">${esc(e.type || '')}${e.date ? ' · ' + dbr(e.date) : ''}${e.venue ? ' · ' + esc(e.venue) : ''}</p></div>
-        <span class="badge ${e.owner === 'Cliente' ? 'bg-accent/20 text-indigo-300' : 'bg-panel2 text-muted'}">${esc(e.owner || 'Meu')}</span>
+    const meta = [esc(e.type || ''), e.date ? dbr(e.date) : '', esc(e.venue || 'Local a definir')].filter(Boolean).join(' · ');
+    return `<div class="card p-6 cursor-pointer hover:border-accent transition" data-ev="${e.id}">
+      <div class="flex justify-between items-start mb-1 gap-3">
+        <h3 class="text-2xl font-display leading-tight">${esc(e.name)}</h3>
+        <span class="badge" style="background:#FBE7DA;color:#B9502C">${e.owner === 'Cliente' ? 'Cliente' : 'Meu'}</span>
       </div>
-      ${e.clientName ? `<p class="text-xs text-accent2 mb-2">Cliente: ${esc(e.clientName)}</p>` : ''}
-      <div class="grid grid-cols-2 gap-2 text-sm my-3">
-        <div><div class="text-muted text-xs">Orcamento</div><b class="${e.overBudget ? 'text-bad' : ''}">${brl(e.budget)}</b></div>
-        <div><div class="text-muted text-xs">A pagar</div><b class="text-warn">${brl(e.toPay)}</b></div>
+      <p class="text-muted text-sm mb-5">${meta}</p>
+      <div class="grid grid-cols-2 gap-3 mb-5">
+        <div class="stat-box"><div class="stat-label">Orcamento</div><div class="stat-value">${brl(e.budget)}</div></div>
+        <div class="stat-box accent"><div class="stat-label">A pagar</div><div class="stat-value text-accent">${brl(e.toPay)}</div></div>
       </div>
-      <div class="progress mb-1"><div style="width:${e.checkPercent}%;background:#22d3ee"></div></div>
-      <div class="flex justify-between text-xs text-muted"><span>${e.checkPercent}% checklist</span><span>${e.confirmedPeople} confirmados</span><span>${e.daysLeft != null ? e.daysLeft + ' dias' : ''}</span></div>
+      <div class="flex justify-between text-sm mb-1"><span class="text-muted">Checklist</span><span class="text-muted">${e.checkPercent}%</span></div>
+      <div class="progress mb-4"><div style="width:${e.checkPercent}%;background:#B9502C"></div></div>
+      <div class="flex justify-between items-center pt-3 border-t border-line">
+        <span class="text-sm text-muted">${e.confirmedPeople} confirmados</span>
+        ${e.daysLeft != null ? `<span class="badge bg-panel2">${e.daysLeft} dias</span>` : ''}
+      </div>
     </div>`;
   }
 
@@ -1091,9 +1097,32 @@
     const list = await api('GET', '/events');
     const c = $('#content');
     if (!state.evId) {
-      c.innerHTML = pageHeader('Eventos', 'Eventos seus ou de clientes: orcamento, fornecedores, convidados e checklist', '<button class="btn btn-primary" id="ne">+ Novo evento</button>')
-        + (list.length ? `<div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">${list.map(evCard).join('')}</div>` : emptyState('Nenhum evento ainda. Crie o primeiro.'));
+      if (!state.evFilter) state.evFilter = 'todos';
+      let arr = list.slice();
+      if (state.evFilter === 'meus') arr = arr.filter(x => x.owner !== 'Cliente');
+      if (state.evFilter === 'clientes') arr = arr.filter(x => x.owner === 'Cliente');
+      arr.sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999')));
+      c.innerHTML = `
+        <div class="flex items-start justify-between gap-4 mb-8 flex-wrap">
+          <div>
+            <h1 class="text-4xl md:text-5xl font-display mb-3">Eventos</h1>
+            <p class="text-muted max-w-md leading-relaxed">Os seus e os de clientes — orcamento, fornecedores, convidados e checklist, tudo com calma num so lugar.</p>
+          </div>
+          <button class="btn btn-primary" id="ne">+ Novo evento</button>
+        </div>
+        <div class="flex items-center justify-between gap-3 mb-6 flex-wrap">
+          <div class="flex gap-2">
+            <button class="chip ${state.evFilter === 'todos' ? 'chip-active' : ''}" data-filt="todos">Todos · ${list.length}</button>
+            <button class="chip ${state.evFilter === 'meus' ? 'chip-active' : ''}" data-filt="meus">Meus</button>
+            <button class="chip ${state.evFilter === 'clientes' ? 'chip-active' : ''}" data-filt="clientes">De clientes</button>
+          </div>
+          <span class="text-sm text-muted">Ordenar por data ↓</span>
+        </div>
+        ${arr.length ? `<div class="grid md:grid-cols-2 gap-6 mb-6">${arr.map(evCard).join('')}</div>` : ''}
+        <div class="add-card" id="ne2">+ &nbsp; Adicionar um novo evento</div>`;
       $('#ne').addEventListener('click', newEvent);
+      $('#ne2').addEventListener('click', newEvent);
+      document.querySelectorAll('[data-filt]').forEach(b => b.addEventListener('click', () => { state.evFilter = b.dataset.filt; go('eventos'); }));
       document.querySelectorAll('[data-ev]').forEach(el => el.addEventListener('click', () => { state.evId = el.dataset.ev; state.evTab = 'info'; go('eventos'); }));
       return;
     }
@@ -1102,20 +1131,20 @@
     if (!state.evTab) state.evTab = 'info';
     const tabs = EV_TABS.filter(t => t[0] !== 'honorarios' || e.owner === 'Cliente');
     if (state.evTab === 'honorarios' && e.owner !== 'Cliente') state.evTab = 'info';
-    const ac = { high: 'border-bad/40 bg-bad/10 text-red-200', medium: 'border-warn/40 bg-warn/10 text-amber-200', low: 'border-line bg-panel2' };
+    const ac = { high: 'border-bad/40 bg-bad/10 text-bad', medium: 'border-warn/40 bg-warn/10 text-warn', low: 'border-line bg-panel2' };
     c.innerHTML = pageHeader(e.name, [e.type, e.date ? dbr(e.date) + (e.time ? ' ' + e.time : '') : '', e.venue].filter(Boolean).join(' · '),
       `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`)
       + `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         ${statCard('Dias restantes', ce.daysLeft != null ? ce.daysLeft : '—', e.date ? dbr(e.date) : 'sem data', 'text-accent2')}
-        ${statCard('Orcamento', brl(ce.budget), (ce.overBudget ? 'ESTOUROU ' : 'sobra ') + brl(Math.abs(ce.budgetLeft)), ce.overBudget ? 'text-bad' : 'text-white')}
+        ${statCard('Orcamento', brl(ce.budget), (ce.overBudget ? 'ESTOUROU ' : 'sobra ') + brl(Math.abs(ce.budgetLeft)), ce.overBudget ? 'text-bad' : 'text-ink')}
         ${statCard('Contratado', brl(ce.contracted), 'pago ' + brl(ce.paid))}
         ${statCard('A pagar', brl(ce.toPay), null, 'text-warn')}
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         ${statCard('Pessoas confirmadas', ce.confirmedPeople, 'de ' + ce.invitedPeople + ' convidadas', 'text-good')}
         ${statCard('Sem resposta', ce.pendingGuests, ce.refusedGuests + ' recusaram')}
-        ${statCard('Checklist', ce.checkPercent + '%', ce.checkDone + '/' + ce.checklistTotal + (ce.overdueTasks ? ' · ' + ce.overdueTasks + ' atrasada(s)' : ''), ce.overdueTasks ? 'text-bad' : 'text-white')}
+        ${statCard('Checklist', ce.checkPercent + '%', ce.checkDone + '/' + ce.checklistTotal + (ce.overdueTasks ? ' · ' + ce.overdueTasks + ' atrasada(s)' : ''), ce.overdueTasks ? 'text-bad' : 'text-ink')}
         ${e.owner === 'Cliente' ? statCard('Honorarios a receber', brl(ce.feeToReceive), 'de ' + brl(ce.feeTotal), 'text-accent') : statCard('Status', esc(e.status), 'evento proprio')}
       </div>
       ${alerts.length ? `<div class="space-y-2 mb-4">${alerts.map(a => `<div class="border rounded-lg px-3 py-2 text-sm ${ac[a.level]}">${esc(a.text)}</div>`).join('')}</div>` : ''}
@@ -1168,7 +1197,7 @@
         <td>${brl(v.quoted)}</td><td>${brl(contratado)}</td>
         <td class="text-good">${brl(v.paid)}</td>
         <td class="${rest > 0 ? 'text-warn' : 'text-good'}">${brl(rest)}</td>
-        <td>${dbr(v.dueDate)}${late ? ' <span class="badge bg-bad/20 text-red-300">atrasado</span>' : ''}</td>
+        <td>${dbr(v.dueDate)}${late ? ' <span class="badge bg-bad/20 text-bad">atrasado</span>' : ''}</td>
         <td class="text-right whitespace-nowrap"><button class="chip" data-vpay="${v.id}">💰</button> <button class="chip" data-vedit="${v.id}">✏️</button> <button class="chip" data-vdel="${v.id}">🗑️</button></td>
       </tr>`;
     }).join('') || '<tr><td colspan="8" class="text-muted text-center py-4">Nenhum fornecedor</td></tr>';
@@ -1180,7 +1209,7 @@
   }
 
   function subEvGuests(e, ce) {
-    const col = { 'Confirmado': 'bg-good/20 text-green-300', 'Recusado': 'bg-bad/20 text-red-300', 'Pendente': 'bg-panel2 text-muted' };
+    const col = { 'Confirmado': 'bg-good/20 text-good', 'Recusado': 'bg-bad/20 text-bad', 'Pendente': 'bg-panel2 text-muted' };
     const rows = (e.guests || []).map(g => `<tr>
       <td><b>${esc(g.name)}</b>${g.contact ? `<div class="text-xs text-muted">${esc(g.contact)}</div>` : ''}</td>
       <td><span class="chip">${esc(g.group || '-')}</span></td>
@@ -1197,11 +1226,11 @@
 
   function subEvCheck(e) {
     const today = new Date().toISOString().slice(0, 10);
-    const col = { 'Pendente': 'bg-panel2 text-muted', 'Em andamento': 'bg-warn/20 text-amber-300', 'Concluido': 'bg-good/20 text-green-300' };
+    const col = { 'Pendente': 'bg-panel2 text-muted', 'Em andamento': 'bg-warn/20 text-warn', 'Concluido': 'bg-good/20 text-good' };
     const rows = (e.checklist || []).map(i => {
       const late = i.status !== 'Concluido' && i.dueDate && i.dueDate < today;
       return `<tr class="${late ? 'bg-bad/5' : ''}"><td>${esc(i.text)}</td>
-        <td>${dbr(i.dueDate)}${late ? ' <span class="badge bg-bad/20 text-red-300">atrasada</span>' : ''}</td>
+        <td>${dbr(i.dueDate)}${late ? ' <span class="badge bg-bad/20 text-bad">atrasada</span>' : ''}</td>
         <td><button class="badge ${col[i.status] || col.Pendente}" data-ctog="${i.id}">${esc(i.status || 'Pendente')}</button></td>
         <td class="text-right"><button class="chip" data-cdel="${i.id}">🗑️</button></td></tr>`;
     }).join('') || '<tr><td colspan="4" class="text-muted text-center py-4">Nenhuma tarefa</td></tr>';

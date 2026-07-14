@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Radar Financeiro</title>
   <meta name="description" content="Tudo o que voce vai pagar, antes de precisar pagar." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script>
@@ -12,9 +15,23 @@
       theme: {
         extend: {
           colors: {
-            base: '#0b0f1a', panel: '#131a2b', panel2: '#1a2338',
-            line: '#232d47', accent: '#6366f1', accent2: '#22d3ee',
-            good: '#22c55e', warn: '#f59e0b', bad: '#ef4444', muted: '#8b95b0'
+            base: '#F7F1E7',    // fundo principal (creme)
+            sand: '#F1E7D8',    // sidebar
+            panel: '#FFFDF9',   // cards
+            panel2: '#F3E9DB',  // caixas suaves
+            line: '#E5D8C6',    // bordas
+            ink: '#2B2622',     // texto principal
+            muted: '#8A7C6B',   // texto secundario
+            accent: '#B9502C',  // terracota
+            accent2: '#C4622F', // terracota claro
+            dark: '#2E2A26',    // botao escuro
+            good: '#2F7A55',
+            warn: '#B07A20',
+            bad: '#B23A2E'
+          },
+          fontFamily: {
+            sans: ['"DM Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            display: ['"Playfair Display"', 'Georgia', 'serif']
           }
         }
       }
@@ -22,7 +39,7 @@
   </script>
   <link rel="stylesheet" href="/styles.css" />
 </head>
-<body class="bg-base text-slate-100 antialiased">
+<body class="bg-base text-ink antialiased">
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed bottom-6 right-6 z-50 space-y-2"></div>
