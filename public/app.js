@@ -1133,7 +1133,7 @@
     if (state.evTab === 'honorarios' && e.owner !== 'Cliente') state.evTab = 'info';
     const ac = { high: 'border-bad/40 bg-bad/10 text-bad', medium: 'border-warn/40 bg-warn/10 text-warn', low: 'border-line bg-panel2' };
     c.innerHTML = pageHeader(e.name, [e.type, e.date ? dbr(e.date) + (e.time ? ' ' + e.time : '') : '', e.venue].filter(Boolean).join(' · '),
-      `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`)
+      `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-edit">✏️ Editar</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`)
       + `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         ${statCard('Dias restantes', ce.daysLeft != null ? ce.daysLeft : '—', e.date ? dbr(e.date) : 'sem data', 'text-accent2')}
@@ -1151,10 +1151,30 @@
       <div class="flex gap-1 flex-wrap mb-4">${tabs.map(([k, l]) => `<button class="btn ${k === state.evTab ? 'btn-primary' : 'btn-ghost'}" data-evtab="${k}">${l}</button>`).join('')}</div>
       <div id="ev-sub"></div>`;
     $('#ev-back').addEventListener('click', () => { state.evId = null; go('eventos'); });
+    $('#ev-edit').addEventListener('click', () => evQuickEdit(e));
     $('#ev-del').addEventListener('click', () => confirmModal('Excluir o evento "' + e.name + '" e tudo dele?', async () => { await api('DELETE', '/events/' + e.id); state.evId = null; toast('Excluido', 'ok'); go('eventos'); }));
     document.querySelectorAll('[data-evtab]').forEach(b => b.addEventListener('click', () => { state.evTab = b.dataset.evtab; renderEvSub(ce); }));
     renderEvSub(ce);
   };
+
+  function evQuickEdit(e) {
+    formModal('Editar evento', [
+      { name: 'name', label: 'Nome do evento', required: true, col: 'full', value: e.name },
+      { name: 'type', label: 'Tipo', type: 'select', value: e.type, options: ['Casamento', 'Festa', 'Formatura', 'Aniversario', 'Corporativo', 'Outro'].map(o => ({ value: o, label: o })) },
+      { name: 'status', label: 'Status', type: 'select', value: e.status, options: ['Planejamento', 'Confirmado', 'Realizado', 'Cancelado'].map(o => ({ value: o, label: o })) },
+      { name: 'date', label: 'Data', type: 'date', value: e.date },
+      { name: 'time', label: 'Hora', type: 'time', value: e.time },
+      { name: 'venue', label: 'Local', value: e.venue },
+      { name: 'budget', label: 'Orcamento total (R$)', type: 'number', step: '0.01', value: e.budget || 0 },
+      { name: 'owner', label: 'De quem e o evento?', type: 'select', value: e.owner, options: ['Meu', 'Cliente'].map(o => ({ value: o, label: o })) },
+      { name: 'clientName', label: 'Nome do cliente (se for de cliente)', col: 'full', value: e.clientName }
+    ], async v => {
+      Object.assign(e, v, { budget: Number(v.budget) || 0 });
+      state.ev = e;
+      closeModal(); toast('Evento atualizado', 'ok');
+      await saveEv();
+    });
+  }
 
   function renderEvSub(ce) {
     const e = state.ev; const box = $('#ev-sub'); if (!box) return;
@@ -1210,11 +1230,12 @@
 
   function subEvGuests(e, ce) {
     const col = { 'Confirmado': 'bg-good/20 text-good', 'Recusado': 'bg-bad/20 text-bad', 'Pendente': 'bg-panel2 text-muted' };
+    const compCount = g => (Array.isArray(g.companionNames) && g.companionNames.length) ? g.companionNames.length : (Number(g.companions) || 0);
     const rows = (e.guests || []).map(g => `<tr>
-      <td><b>${esc(g.name)}</b>${g.contact ? `<div class="text-xs text-muted">${esc(g.contact)}</div>` : ''}</td>
+      <td><b>${esc(g.name)}</b>${g.contact ? `<div class="text-xs text-muted">${esc(g.contact)}</div>` : ''}${(g.companionNames && g.companionNames.length) ? `<div class="text-xs text-muted mt-0.5">com ${g.companionNames.map(n => esc(n)).join(', ')}</div>` : ''}</td>
       <td><span class="chip">${esc(g.group || '-')}</span></td>
-      <td>${Number(g.companions) || 0}</td>
-      <td>${1 + (Number(g.companions) || 0)}</td>
+      <td>${compCount(g)}</td>
+      <td>${1 + compCount(g)}</td>
       <td><button class="badge ${col[g.status] || col.Pendente}" data-gtog="${g.id}">${esc(g.status || 'Pendente')}</button></td>
       <td class="text-right whitespace-nowrap"><button class="chip" data-gedit="${g.id}">✏️</button> <button class="chip" data-gdel="${g.id}">🗑️</button></td>
     </tr>`).join('') || '<tr><td colspan="6" class="text-muted text-center py-4">Nenhum convidado</td></tr>';
@@ -1298,12 +1319,17 @@
     const gFields = (g) => [
       { name: 'name', label: 'Nome', required: true, col: 'full', value: g && g.name },
       { name: 'group', label: 'Grupo', type: 'select', value: g && g.group, options: ['Familia', 'Amigos', 'Trabalho', 'Outros'].map(o => ({ value: o, label: o })) },
-      { name: 'companions', label: 'Acompanhantes', type: 'number', min: 0, value: (g && g.companions) || 0 },
+      { name: 'companions', label: 'Acompanhantes (qtde, se nao souber os nomes)', type: 'number', min: 0, value: (g && g.companions) || 0 },
+      { name: 'companionNames', label: 'Nomes dos acompanhantes (um por linha)', type: 'textarea', col: 'full', value: (g && g.companionNames || []).join('\n') },
       { name: 'contact', label: 'Contato', value: g && g.contact },
       { name: 'status', label: 'Status', type: 'select', value: g && g.status, options: ['Pendente', 'Confirmado', 'Recusado'].map(o => ({ value: o, label: o })) }
     ];
-    if ($('#g-add')) $('#g-add').addEventListener('click', () => formModal('Novo convidado', gFields(), async v => { (e.guests = e.guests || []).push(Object.assign({ id: genId() }, v, { companions: Number(v.companions) || 0 })); closeModal(); saveEv(); }));
-    document.querySelectorAll('[data-gedit]').forEach(b => b.addEventListener('click', () => { const g = e.guests.find(x => x.id === b.dataset.gedit); formModal('Editar convidado', gFields(g), async v => { Object.assign(g, v, { companions: Number(v.companions) || 0 }); closeModal(); saveEv(); }); }));
+    const normGuest = v => {
+      const names = String(v.companionNames || '').split('\n').map(x => x.trim()).filter(Boolean);
+      return Object.assign({}, v, { companionNames: names, companions: names.length ? names.length : (Number(v.companions) || 0) });
+    };
+    if ($('#g-add')) $('#g-add').addEventListener('click', () => formModal('Novo convidado', gFields(), async v => { (e.guests = e.guests || []).push(Object.assign({ id: genId() }, normGuest(v))); closeModal(); saveEv(); }));
+    document.querySelectorAll('[data-gedit]').forEach(b => b.addEventListener('click', () => { const g = e.guests.find(x => x.id === b.dataset.gedit); formModal('Editar convidado', gFields(g), async v => { Object.assign(g, normGuest(v)); closeModal(); saveEv(); }); }));
     document.querySelectorAll('[data-gdel]').forEach(b => b.addEventListener('click', () => { e.guests = e.guests.filter(x => x.id !== b.dataset.gdel); saveEv(); }));
     document.querySelectorAll('[data-gtog]').forEach(b => b.addEventListener('click', () => { const g = e.guests.find(x => x.id === b.dataset.gtog); g.status = gStatus[g.status || 'Pendente']; saveEv(); }));
     // Checklist

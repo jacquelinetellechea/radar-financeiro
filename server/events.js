@@ -34,7 +34,9 @@ function computeEvent(e) {
   const overBudget = budget > 0 && contracted > budget;
 
   const guests = e.guests || [];
-  const people = g => 1 + (Number(g.companions) || 0);
+  const people = g => 1 + ((Array.isArray(g.companionNames) && g.companionNames.length)
+    ? g.companionNames.length
+    : (Number(g.companions) || 0));
   const invitedPeople = guests.reduce((s, g) => s + people(g), 0);
   const confirmedPeople = guests.filter(g => g.status === 'Confirmado').reduce((s, g) => s + people(g), 0);
   const pendingGuests = guests.filter(g => !g.status || g.status === 'Pendente').length;
