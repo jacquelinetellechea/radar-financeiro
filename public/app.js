@@ -1231,17 +1231,33 @@
   function subEvGuests(e, ce) {
     const col = { 'Confirmado': 'bg-good/20 text-good', 'Recusado': 'bg-bad/20 text-bad', 'Pendente': 'bg-panel2 text-muted' };
     const compCount = g => (Array.isArray(g.companionNames) && g.companionNames.length) ? g.companionNames.length : (Number(g.companions) || 0);
-    const rows = (e.guests || []).map(g => `<tr>
+    const ageOf = g => (g.age === '' || g.age == null) ? null : Number(g.age);
+    if (!state.guestFilter) state.guestFilter = 'todos';
+    let gl = (e.guests || []).slice();
+    if (state.guestFilter === 'u5') gl = gl.filter(g => { const a = ageOf(g); return a != null && a < 5; });
+    if (state.guestFilter === 'k59') gl = gl.filter(g => { const a = ageOf(g); return a != null && a >= 5 && a < 10; });
+    const rows = gl.map(g => `<tr>
       <td><b>${esc(g.name)}</b>${g.contact ? `<div class="text-xs text-muted">${esc(g.contact)}</div>` : ''}${(g.companionNames && g.companionNames.length) ? `<div class="text-xs text-muted mt-0.5">com ${g.companionNames.map(n => esc(n)).join(', ')}</div>` : ''}</td>
       <td><span class="chip">${esc(g.group || '-')}</span></td>
+      <td>${ageOf(g) != null ? ageOf(g) + ' anos' : '—'}</td>
       <td>${compCount(g)}</td>
       <td>${1 + compCount(g)}</td>
       <td><button class="badge ${col[g.status] || col.Pendente}" data-gtog="${g.id}">${esc(g.status || 'Pendente')}</button></td>
       <td class="text-right whitespace-nowrap"><button class="chip" data-gedit="${g.id}">✏️</button> <button class="chip" data-gdel="${g.id}">🗑️</button></td>
-    </tr>`).join('') || '<tr><td colspan="6" class="text-muted text-center py-4">Nenhum convidado</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="7" class="text-muted text-center py-6">Nenhum convidado neste filtro</td></tr>';
     return `<div class="card overflow-hidden">
-      <div class="flex justify-between items-center p-4"><h3 class="font-semibold">Convidados · ${ce.confirmedPeople} pessoas confirmadas de ${ce.invitedPeople}</h3><button class="btn btn-primary" id="g-add">+ Convidado</button></div>
-      <table><thead><tr><th>Nome</th><th>Grupo</th><th>Acompanhantes</th><th>Pessoas</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="flex justify-between items-center p-4 flex-wrap gap-3"><h3 class="font-semibold">Convidados · ${ce.confirmedPeople} pessoas confirmadas de ${ce.invitedPeople}</h3><button class="btn btn-primary" id="g-add">+ Convidado</button></div>
+      <div class="px-4 pb-3 grid grid-cols-3 gap-3">
+        ${statCard('Menores de 5 anos', ce.kidsUnder5, 'nao pagam (ex.)')}
+        ${statCard('De 5 a 9 anos', ce.kids5to9, 'meia (ex.)')}
+        ${statCard('Ate 9 anos (total)', ce.kidsUnder10, 'criancas')}
+      </div>
+      <div class="px-4 pb-3 flex gap-2">
+        <button class="chip ${state.guestFilter === 'todos' ? 'chip-active' : ''}" data-gfilt="todos">Todos</button>
+        <button class="chip ${state.guestFilter === 'u5' ? 'chip-active' : ''}" data-gfilt="u5">Menos de 5 anos</button>
+        <button class="chip ${state.guestFilter === 'k59' ? 'chip-active' : ''}" data-gfilt="k59">De 5 a 9 anos</button>
+      </div>
+      <table><thead><tr><th>Nome</th><th>Grupo</th><th>Idade</th><th>Acompanhantes</th><th>Pessoas</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
 
@@ -1319,6 +1335,7 @@
     const gFields = (g) => [
       { name: 'name', label: 'Nome', required: true, col: 'full', value: g && g.name },
       { name: 'group', label: 'Grupo', type: 'select', value: g && g.group, options: ['Familia', 'Amigos', 'Trabalho', 'Outros'].map(o => ({ value: o, label: o })) },
+      { name: 'age', label: 'Idade (anos, opcional)', type: 'number', min: 0, value: (g && g.age != null) ? g.age : '' },
       { name: 'companions', label: 'Acompanhantes (qtde, se nao souber os nomes)', type: 'number', min: 0, value: (g && g.companions) || 0 },
       { name: 'companionNames', label: 'Nomes dos acompanhantes (um por linha)', type: 'textarea', col: 'full', value: (g && g.companionNames || []).join('\n') },
       { name: 'contact', label: 'Contato', value: g && g.contact },
@@ -1326,12 +1343,13 @@
     ];
     const normGuest = v => {
       const names = String(v.companionNames || '').split('\n').map(x => x.trim()).filter(Boolean);
-      return Object.assign({}, v, { companionNames: names, companions: names.length ? names.length : (Number(v.companions) || 0) });
+      return Object.assign({}, v, { companionNames: names, companions: names.length ? names.length : (Number(v.companions) || 0), age: (v.age === '' || v.age == null) ? '' : Number(v.age) });
     };
     if ($('#g-add')) $('#g-add').addEventListener('click', () => formModal('Novo convidado', gFields(), async v => { (e.guests = e.guests || []).push(Object.assign({ id: genId() }, normGuest(v))); closeModal(); saveEv(); }));
     document.querySelectorAll('[data-gedit]').forEach(b => b.addEventListener('click', () => { const g = e.guests.find(x => x.id === b.dataset.gedit); formModal('Editar convidado', gFields(g), async v => { Object.assign(g, normGuest(v)); closeModal(); saveEv(); }); }));
     document.querySelectorAll('[data-gdel]').forEach(b => b.addEventListener('click', () => { e.guests = e.guests.filter(x => x.id !== b.dataset.gdel); saveEv(); }));
     document.querySelectorAll('[data-gtog]').forEach(b => b.addEventListener('click', () => { const g = e.guests.find(x => x.id === b.dataset.gtog); g.status = gStatus[g.status || 'Pendente']; saveEv(); }));
+    document.querySelectorAll('[data-gfilt]').forEach(b => b.addEventListener('click', () => { state.guestFilter = b.dataset.gfilt; renderEvSub(ce); }));
     // Checklist
     const cStatus = { 'Pendente': 'Em andamento', 'Em andamento': 'Concluido', 'Concluido': 'Pendente' };
     if ($('#c-add')) $('#c-add').addEventListener('click', () => formModal('Nova tarefa', [

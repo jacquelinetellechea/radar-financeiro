@@ -25,7 +25,7 @@ function blankEvent(id, name) {
 function computeEvent(e) {
   const today = new Date(); const todayISO = today.toISOString().slice(0, 10);
   const vendors = e.vendors || [];
-  const contracted = round2(vendors.reduce((s, v) => s + (Number(v.agreed) || Number(v.quoted) || 0), 0));
+  const contracted = round2(vendors.reduce((s, v) => s + (Number(v.agreed) || 0), 0)); // apenas valor fechado
   const quoted = round2(vendors.reduce((s, v) => s + (Number(v.quoted) || 0), 0));
   const paid = round2(vendors.reduce((s, v) => s + (Number(v.paid) || 0), 0));
   const toPay = round2(Math.max(0, contracted - paid));
@@ -41,6 +41,10 @@ function computeEvent(e) {
   const confirmedPeople = guests.filter(g => g.status === 'Confirmado').reduce((s, g) => s + people(g), 0);
   const pendingGuests = guests.filter(g => !g.status || g.status === 'Pendente').length;
   const refusedGuests = guests.filter(g => g.status === 'Recusado').length;
+  const ageOf = g => (g.age === '' || g.age == null) ? null : Number(g.age);
+  const kidsUnder5 = guests.filter(g => { const a = ageOf(g); return a != null && a < 5; }).length;
+  const kids5to9 = guests.filter(g => { const a = ageOf(g); return a != null && a >= 5 && a < 10; }).length;
+  const kidsUnder10 = kidsUnder5 + kids5to9;
 
   const checklist = e.checklist || [];
   const checkDone = checklist.filter(i => i.status === 'Concluido').length;
@@ -58,6 +62,7 @@ function computeEvent(e) {
   return {
     budget, quoted, contracted, paid, toPay, budgetLeft, overBudget,
     guestsTotal: guests.length, invitedPeople, confirmedPeople, pendingGuests, refusedGuests,
+    kidsUnder5, kids5to9, kidsUnder10,
     checkDone, checklistTotal: checklist.length, checkPercent, overdueTasks,
     daysLeft, feeTotal, feeReceived, feeToReceive
   };
@@ -69,7 +74,7 @@ function eventAlerts(e, c) {
   if (c.overdueTasks > 0) a.push({ level: 'high', text: `${c.overdueTasks} tarefa(s) do checklist em atraso.` });
   if (c.daysLeft !== null && c.daysLeft >= 0 && c.daysLeft <= 30) a.push({ level: 'medium', text: `Faltam ${c.daysLeft} dias para o evento.` });
   (e.vendors || []).forEach(v => {
-    const rest = (Number(v.agreed) || Number(v.quoted) || 0) - (Number(v.paid) || 0);
+    const rest = (Number(v.agreed) || 0) - (Number(v.paid) || 0);
     if (rest > 0 && v.dueDate) {
       const d = Math.ceil((new Date(v.dueDate + 'T00:00:00') - new Date()) / 86400000);
       if (d >= 0 && d <= 10) a.push({ level: 'medium', text: `Pagamento de ${v.name} (${brl(rest)}) vence em ${d} dia(s).` });
