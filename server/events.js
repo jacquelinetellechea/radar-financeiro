@@ -18,6 +18,7 @@ function blankEvent(id, name) {
     guests: [],                   // {id,name,group,companions,contact,status}
     checklist: [],                // {id,text,dueDate,status}
     fee: { total: 0, installments: 1, receipts: [] }, // honorarios (evento de cliente): receipts {id,date,amount,note}
+    ideas: [],                    // {id,type:'link'|'image'|'note',content,note}
     createdAt: new Date().toISOString()
   };
 }
@@ -34,17 +35,15 @@ function computeEvent(e) {
   const overBudget = budget > 0 && contracted > budget;
 
   const guests = e.guests || [];
-  const people = g => 1 + ((Array.isArray(g.companionNames) && g.companionNames.length)
-    ? g.companionNames.length
-    : (Number(g.companions) || 0));
-  const invitedPeople = guests.reduce((s, g) => s + people(g), 0);
-  const confirmedPeople = guests.filter(g => g.status === 'Confirmado').reduce((s, g) => s + people(g), 0);
+  const invitedPeople = guests.length; // cada convidado = 1 pessoa
+  const confirmedPeople = guests.filter(g => g.status === 'Confirmado').length;
   const pendingGuests = guests.filter(g => !g.status || g.status === 'Pendente').length;
   const refusedGuests = guests.filter(g => g.status === 'Recusado').length;
   const ageOf = g => (g.age === '' || g.age == null) ? null : Number(g.age);
   const kidsUnder5 = guests.filter(g => { const a = ageOf(g); return a != null && a < 5; }).length;
   const kids5to9 = guests.filter(g => { const a = ageOf(g); return a != null && a >= 5 && a < 10; }).length;
   const kidsUnder10 = kidsUnder5 + kids5to9;
+  const adults = guests.length - kidsUnder10; // sem idade ou 10+ = adulto
 
   const checklist = e.checklist || [];
   const checkDone = checklist.filter(i => i.status === 'Concluido').length;
@@ -62,7 +61,7 @@ function computeEvent(e) {
   return {
     budget, quoted, contracted, paid, toPay, budgetLeft, overBudget,
     guestsTotal: guests.length, invitedPeople, confirmedPeople, pendingGuests, refusedGuests,
-    kidsUnder5, kids5to9, kidsUnder10,
+    kidsUnder5, kids5to9, kidsUnder10, adults,
     checkDone, checklistTotal: checklist.length, checkPercent, overdueTasks,
     daysLeft, feeTotal, feeReceived, feeToReceive
   };

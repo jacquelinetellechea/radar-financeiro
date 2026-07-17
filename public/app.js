@@ -1064,7 +1064,7 @@
   }
 
   // ================= EVENTOS =================
-  const EV_TABS = [['info', 'Informacoes'], ['fornecedores', 'Fornecedores'], ['convidados', 'Convidados'], ['checklist', 'Checklist'], ['honorarios', 'Honorarios']];
+  const EV_TABS = [['info', 'Informacoes'], ['fornecedores', 'Fornecedores'], ['convidados', 'Convidados'], ['checklist', 'Checklist'], ['ideias', 'Ideias'], ['honorarios', 'Honorarios']];
   const EV_CATS = ['Buffet', 'Local', 'Decoracao', 'Fotografia', 'Musica/DJ', 'Bolo/Doces', 'Convites', 'Vestuario/Beleza', 'Transporte', 'Outros'];
 
   async function saveEv() { try { await api('PUT', '/events/' + state.ev.id, state.ev); go('eventos'); } catch (e) { toast(e.message, 'err'); } }
@@ -1183,6 +1183,7 @@
     else if (T === 'fornecedores') box.innerHTML = subEvVendors(e);
     else if (T === 'convidados') box.innerHTML = subEvGuests(e, ce);
     else if (T === 'checklist') box.innerHTML = subEvCheck(e);
+    else if (T === 'ideias') box.innerHTML = subEvIdeas(e);
     else if (T === 'honorarios') box.innerHTML = subEvFee(e, ce);
     bindEvSub(ce);
   }
@@ -1230,34 +1231,34 @@
 
   function subEvGuests(e, ce) {
     const col = { 'Confirmado': 'bg-good/20 text-good', 'Recusado': 'bg-bad/20 text-bad', 'Pendente': 'bg-panel2 text-muted' };
-    const compCount = g => (Array.isArray(g.companionNames) && g.companionNames.length) ? g.companionNames.length : (Number(g.companions) || 0);
     const ageOf = g => (g.age === '' || g.age == null) ? null : Number(g.age);
+    const classe = g => { const a = ageOf(g); return a == null ? 'Adulto' : (a + ' anos'); };
     if (!state.guestFilter) state.guestFilter = 'todos';
     let gl = (e.guests || []).slice();
     if (state.guestFilter === 'u5') gl = gl.filter(g => { const a = ageOf(g); return a != null && a < 5; });
     if (state.guestFilter === 'k59') gl = gl.filter(g => { const a = ageOf(g); return a != null && a >= 5 && a < 10; });
+    if (state.guestFilter === 'adt') gl = gl.filter(g => { const a = ageOf(g); return a == null || a >= 10; });
     const rows = gl.map(g => `<tr>
-      <td><b>${esc(g.name)}</b>${g.contact ? `<div class="text-xs text-muted">${esc(g.contact)}</div>` : ''}${(g.companionNames && g.companionNames.length) ? `<div class="text-xs text-muted mt-0.5">com ${g.companionNames.map(n => esc(n)).join(', ')}</div>` : ''}</td>
+      <td><b>${esc(g.name)}</b>${g.contact ? `<div class="text-xs text-muted">${esc(g.contact)}</div>` : ''}</td>
       <td><span class="chip">${esc(g.group || '-')}</span></td>
-      <td>${ageOf(g) != null ? ageOf(g) + ' anos' : '—'}</td>
-      <td>${compCount(g)}</td>
-      <td>${1 + compCount(g)}</td>
+      <td>${classe(g)}</td>
       <td><button class="badge ${col[g.status] || col.Pendente}" data-gtog="${g.id}">${esc(g.status || 'Pendente')}</button></td>
       <td class="text-right whitespace-nowrap"><button class="chip" data-gedit="${g.id}">✏️</button> <button class="chip" data-gdel="${g.id}">🗑️</button></td>
-    </tr>`).join('') || '<tr><td colspan="7" class="text-muted text-center py-6">Nenhum convidado neste filtro</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="5" class="text-muted text-center py-6">Nenhum convidado neste filtro</td></tr>';
     return `<div class="card overflow-hidden">
-      <div class="flex justify-between items-center p-4 flex-wrap gap-3"><h3 class="font-semibold">Convidados · ${ce.confirmedPeople} pessoas confirmadas de ${ce.invitedPeople}</h3><button class="btn btn-primary" id="g-add">+ Convidado</button></div>
+      <div class="flex justify-between items-center p-4 flex-wrap gap-3"><h3 class="font-semibold">Convidados · ${ce.confirmedPeople} confirmados de ${ce.guestsTotal}</h3><button class="btn btn-primary" id="g-add">+ Convidado</button></div>
       <div class="px-4 pb-3 grid grid-cols-3 gap-3">
-        ${statCard('Menores de 5 anos', ce.kidsUnder5, 'nao pagam (ex.)')}
-        ${statCard('De 5 a 9 anos', ce.kids5to9, 'meia (ex.)')}
-        ${statCard('Ate 9 anos (total)', ce.kidsUnder10, 'criancas')}
+        ${statCard('Menores de 5 anos', ce.kidsUnder5)}
+        ${statCard('De 5 a 9 anos', ce.kids5to9)}
+        ${statCard('Adultos', ce.adults, '10+ ou sem idade')}
       </div>
-      <div class="px-4 pb-3 flex gap-2">
+      <div class="px-4 pb-3 flex gap-2 flex-wrap">
         <button class="chip ${state.guestFilter === 'todos' ? 'chip-active' : ''}" data-gfilt="todos">Todos</button>
         <button class="chip ${state.guestFilter === 'u5' ? 'chip-active' : ''}" data-gfilt="u5">Menos de 5 anos</button>
         <button class="chip ${state.guestFilter === 'k59' ? 'chip-active' : ''}" data-gfilt="k59">De 5 a 9 anos</button>
+        <button class="chip ${state.guestFilter === 'adt' ? 'chip-active' : ''}" data-gfilt="adt">Adultos</button>
       </div>
-      <table><thead><tr><th>Nome</th><th>Grupo</th><th>Idade</th><th>Acompanhantes</th><th>Pessoas</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>Nome</th><th>Grupo</th><th>Classificacao</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
 
@@ -1294,6 +1295,18 @@
       </div>
       <table><thead><tr><th>Data</th><th>Valor</th><th>Obs</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
+  }
+
+  function subEvIdeas(e) {
+    const cards = (e.ideas || []).map(i => {
+      let inner = '';
+      if (i.type === 'image') inner = `<img src="${esc(i.content)}" class="w-full h-44 object-cover rounded-lg mb-2" onerror="this.style.display='none'">`;
+      else if (i.type === 'link') inner = `<a href="${esc(i.content)}" target="_blank" class="text-accent2 underline break-all text-sm">${esc(i.content)}</a>`;
+      return `<div class="card p-3">${inner}${i.note ? `<div class="text-sm mt-1">${esc(i.note)}</div>` : ''}
+        <div class="text-right mt-2"><button class="chip" data-idea-del="${i.id}">🗑️</button></div></div>`;
+    }).join('') || emptyState('Sem ideias ainda. Adicione links, fotos (por URL) ou anotacoes que os clientes enviam.');
+    return `<div><div class="flex justify-between items-center mb-3"><h3 class="font-semibold">Ideias e referencias</h3><button class="btn btn-primary" id="idea-add">+ Adicionar</button></div>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-4">${cards}</div></div>`;
   }
 
   function bindEvSub(ce) {
@@ -1335,16 +1348,11 @@
     const gFields = (g) => [
       { name: 'name', label: 'Nome', required: true, col: 'full', value: g && g.name },
       { name: 'group', label: 'Grupo', type: 'select', value: g && g.group, options: ['Familia', 'Amigos', 'Trabalho', 'Outros'].map(o => ({ value: o, label: o })) },
-      { name: 'age', label: 'Idade (anos, opcional)', type: 'number', min: 0, value: (g && g.age != null) ? g.age : '' },
-      { name: 'companions', label: 'Acompanhantes (qtde, se nao souber os nomes)', type: 'number', min: 0, value: (g && g.companions) || 0 },
-      { name: 'companionNames', label: 'Nomes dos acompanhantes (um por linha)', type: 'textarea', col: 'full', value: (g && g.companionNames || []).join('\n') },
+      { name: 'age', label: 'Idade (anos) — deixe vazio para adulto', type: 'number', min: 0, value: (g && g.age != null) ? g.age : '' },
       { name: 'contact', label: 'Contato', value: g && g.contact },
       { name: 'status', label: 'Status', type: 'select', value: g && g.status, options: ['Pendente', 'Confirmado', 'Recusado'].map(o => ({ value: o, label: o })) }
     ];
-    const normGuest = v => {
-      const names = String(v.companionNames || '').split('\n').map(x => x.trim()).filter(Boolean);
-      return Object.assign({}, v, { companionNames: names, companions: names.length ? names.length : (Number(v.companions) || 0), age: (v.age === '' || v.age == null) ? '' : Number(v.age) });
-    };
+    const normGuest = v => Object.assign({}, v, { age: (v.age === '' || v.age == null) ? '' : Number(v.age) });
     if ($('#g-add')) $('#g-add').addEventListener('click', () => formModal('Novo convidado', gFields(), async v => { (e.guests = e.guests || []).push(Object.assign({ id: genId() }, normGuest(v))); closeModal(); saveEv(); }));
     document.querySelectorAll('[data-gedit]').forEach(b => b.addEventListener('click', () => { const g = e.guests.find(x => x.id === b.dataset.gedit); formModal('Editar convidado', gFields(g), async v => { Object.assign(g, normGuest(v)); closeModal(); saveEv(); }); }));
     document.querySelectorAll('[data-gdel]').forEach(b => b.addEventListener('click', () => { e.guests = e.guests.filter(x => x.id !== b.dataset.gdel); saveEv(); }));
@@ -1371,6 +1379,13 @@
       { name: 'affectCashflow', label: 'Lancar no Fluxo de Caixa?', type: 'select', options: [{ value: '', label: 'Nao' }, { value: '1', label: 'Sim, como receita' }] }
     ], async v => { await api('POST', '/events/' + e.id + '/receive', { amount: v.amount, date: v.date, note: v.note, affectCashflow: !!v.affectCashflow }); closeModal(); toast('Recebimento registrado', 'ok'); go('eventos'); }));
     document.querySelectorAll('[data-rdel]').forEach(b => b.addEventListener('click', () => { e.fee.receipts = e.fee.receipts.filter(x => x.id !== b.dataset.rdel); saveEv(); }));
+    // Ideias
+    if ($('#idea-add')) $('#idea-add').addEventListener('click', () => formModal('Adicionar ideia', [
+      { name: 'type', label: 'Tipo', type: 'select', options: [{ value: 'link', label: 'Link' }, { value: 'image', label: 'Foto (URL da imagem)' }, { value: 'note', label: 'Anotacao' }] },
+      { name: 'content', label: 'Link ou URL da imagem', col: 'full', placeholder: 'https://... (vazio se for so anotacao)' },
+      { name: 'note', label: 'Descricao / de quem veio', col: 'full' }
+    ], async v => { (e.ideas = e.ideas || []).push({ id: genId(), type: v.type, content: v.content, note: v.note }); closeModal(); saveEv(); }));
+    document.querySelectorAll('[data-idea-del]').forEach(b => b.addEventListener('click', () => { e.ideas = e.ideas.filter(x => x.id !== b.dataset.ideaDel); saveEv(); }));
   }
 
 
