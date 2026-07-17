@@ -1074,7 +1074,10 @@
   }
   function evCard(e) {
     const meta = [esc(e.type || ''), e.date ? dbr(e.date) : '', esc(e.venue || 'Local a definir')].filter(Boolean).join(' · ');
-    return `<div class="card p-6 cursor-pointer hover:border-accent transition" data-ev="${e.id}">
+    const th = e.themeColor || '#B9502C';
+    const cover = e.coverUrl ? `<div style="height:120px;margin:-1.5rem -1.5rem 1rem;background:#EADFCE url('${esc(e.coverUrl)}') center/cover;border-radius:18px 18px 0 0;border-bottom:4px solid ${esc(th)}"></div>` : '';
+    return `<div class="card p-6 cursor-pointer hover:border-accent transition" data-ev="${e.id}" style="border-top:3px solid ${esc(th)}">
+      ${cover}
       <div class="flex justify-between items-start mb-1 gap-3">
         <h3 class="text-2xl font-display leading-tight">${esc(e.name)}</h3>
         <span class="badge" style="background:#FBE7DA;color:#B9502C">${e.owner === 'Cliente' ? 'Cliente' : 'Meu'}</span>
@@ -1132,11 +1135,24 @@
     const tabs = EV_TABS.filter(t => t[0] !== 'honorarios' || e.owner === 'Cliente');
     if (state.evTab === 'honorarios' && e.owner !== 'Cliente') state.evTab = 'info';
     const ac = { high: 'border-bad/40 bg-bad/10 text-bad', medium: 'border-warn/40 bg-warn/10 text-warn', low: 'border-line bg-panel2' };
-    c.innerHTML = pageHeader(e.name, [e.type, e.date ? dbr(e.date) + (e.time ? ' ' + e.time : '') : '', e.venue].filter(Boolean).join(' · '),
-      `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-edit">✏️ Editar</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`)
+    const evMeta = [e.type, e.date ? dbr(e.date) + (e.time ? ' ' + e.time : '') : '', e.venue].filter(Boolean).join(' · ');
+    const evActions = `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-edit">✏️ Editar</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`;
+    const evTheme = e.themeColor || '#B9502C';
+    const evHeader = e.coverUrl
+      ? `<div class="flex justify-end gap-2 mb-3">${evActions}</div>
+         <div class="rounded-2xl overflow-hidden mb-5" style="position:relative;height:200px;background:#EADFCE url('${esc(e.coverUrl)}') center/cover;border:1px solid #E9DECB">
+           <div style="position:absolute;inset:0;background:linear-gradient(to top, rgba(30,26,22,.78), rgba(30,26,22,.05) 62%)"></div>
+           <div style="position:absolute;top:0;left:0;right:0;height:6px;background:${esc(evTheme)}"></div>
+           <div style="position:absolute;left:24px;bottom:18px;right:24px">
+             <h1 class="font-display" style="font-size:2.1rem;line-height:1.1;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.45)">${esc(e.name)}</h1>
+             <p style="font-size:.92rem;color:#fff;opacity:.92">${esc(evMeta)}</p>
+           </div>
+         </div>`
+      : pageHeader(e.name, evMeta, evActions);
+    c.innerHTML = evHeader
       + `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-        ${statCard('Dias restantes', ce.daysLeft != null ? ce.daysLeft : '—', e.date ? dbr(e.date) : 'sem data', 'text-accent2')}
+        ${statCard('Dias restantes', ce.daysLeft != null ? `<span style="color:${esc(evTheme)}">${ce.daysLeft}</span>` : '—', e.date ? dbr(e.date) : 'sem data')}
         ${statCard('Orcamento', brl(ce.budget), (ce.overBudget ? 'ESTOUROU ' : 'sobra ') + brl(Math.abs(ce.budgetLeft)), ce.overBudget ? 'text-bad' : 'text-ink')}
         ${statCard('Contratado', brl(ce.contracted), 'pago ' + brl(ce.paid))}
         ${statCard('A pagar', brl(ce.toPay), null, 'text-warn')}
@@ -1167,7 +1183,9 @@
       { name: 'venue', label: 'Local', value: e.venue },
       { name: 'budget', label: 'Orcamento total (R$)', type: 'number', step: '0.01', value: e.budget || 0 },
       { name: 'owner', label: 'De quem e o evento?', type: 'select', value: e.owner, options: ['Meu', 'Cliente'].map(o => ({ value: o, label: o })) },
-      { name: 'clientName', label: 'Nome do cliente (se for de cliente)', col: 'full', value: e.clientName }
+      { name: 'clientName', label: 'Nome do cliente (se for de cliente)', col: 'full', value: e.clientName },
+      { name: 'coverUrl', label: 'Imagem de capa (URL) — identidade do evento', col: 'full', value: e.coverUrl, placeholder: 'https://...' },
+      { name: 'themeColor', label: 'Cor do tema', type: 'color', value: e.themeColor || '#B9502C' }
     ], async v => {
       Object.assign(e, v, { budget: Number(v.budget) || 0 });
       state.ev = e;

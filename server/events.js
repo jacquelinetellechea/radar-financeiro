@@ -19,6 +19,7 @@ function blankEvent(id, name) {
     checklist: [],                // {id,text,dueDate,status}
     fee: { total: 0, installments: 1, receipts: [] }, // honorarios (evento de cliente): receipts {id,date,amount,note}
     ideas: [],                    // {id,type:'link'|'image'|'note',content,note}
+    coverUrl: '', themeColor: '', // identidade visual do evento (banner + cor)
     createdAt: new Date().toISOString()
   };
 }
