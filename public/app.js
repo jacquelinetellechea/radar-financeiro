@@ -3,7 +3,10 @@
   'use strict';
 
   // ---------------- Estado ----------------
-  const state = { token: localStorage.getItem('rf_token') || null, email: localStorage.getItem('rf_email') || null, page: 'dashboard', charts: {} };
+  // Grupos do menu recolhíveis: persiste no localStorage
+  const _navGroups = JSON.parse(localStorage.getItem('rf_nav_groups') || '{"financeiro":true,"planejamento":false,"analises":false,"sistema":false}');
+  const state = { token: localStorage.getItem('rf_token') || null, email: localStorage.getItem('rf_email') || null, page: 'dashboard', charts: {}, navGroups: _navGroups };
+  function saveNavGroups() { localStorage.setItem('rf_nav_groups', JSON.stringify(state.navGroups)); }
 
   // ---------------- API ----------------
   async function api(method, path, body, isForm) {
@@ -34,6 +37,41 @@
     document.getElementById('toast-root').appendChild(t);
     setTimeout(() => { t.style.opacity = '0'; t.style.transition = '.4s'; setTimeout(() => t.remove(), 400); }, 3200);
   }
+
+  // ---------------- Busca Global ----------------
+  const SEARCH_INDEX = [
+    { key: 'cartoes', label: 'Cartoes', icon: '💳', fetch: () => api('GET', '/cards'), map: c => ({ id: c.id, title: c.name, sub: c.bank || 'Cartao de credito', page: 'cartoes' }) },
+    { key: 'parcelas', label: 'Parcelamentos', icon: '🧾', fetch: () => api('GET', '/installments'), map: i => ({ id: i.id, title: i.description, sub: i.cardName + ' · ' + i.numInstallments + 'x', page: 'parcelas' }) },
+    { key: 'emprestimos', label: 'Emprestimos', icon: '🤝', fetch: () => api('GET', '/loans'), map: l => ({ id: l.id, title: l.person, sub: l.description || 'Emprestimo', page: 'emprestimos' }) },
+    { key: 'receber', label: 'A Receber', icon: '💰', fetch: () => api('GET', '/receivables'), map: r => ({ id: r.id, title: r.person, sub: r.description || 'Valor a receber', page: 'receber' }) },
+    { key: 'recorrentes', label: 'Recorrentes', icon: '🔁', fetch: () => api('GET', '/recurrings'), map: r => ({ id: r.id, title: r.description, sub: r.category || 'Recorrente', page: 'recorrentes' }) },
+  ];
+  let _searchCache = {};
+  async function globalSearch(q) {
+    if (!q || q.length < 2) return {};
+    const results = {};
+    await Promise.all(SEARCH_INDEX.map(async idx => {
+      try {
+        if (!_searchCache[idx.key]) _searchCache[idx.key] = await idx.fetch();
+        const items = (_searchCache[idx.key] || []).map(idx.map).filter(it => it.title.toLowerCase().includes(q.toLowerCase()) || (it.sub && it.sub.toLowerCase().includes(q.toLowerCase())));
+        if (items.length) results[idx.key] = { label: idx.label, icon: idx.icon, items };
+      } catch (e) { /* ignora erro de modulo */ }
+    }));
+    return results;
+  }
+  function clearSearchCache() { _searchCache = {}; }
+
+  // ---------------- Notificacoes ----------------
+  let _notifCache = null;
+  async function loadNotifs() {
+    if (_notifCache) return _notifCache;
+    try {
+      const d = await api('GET', '/dashboard');
+      _notifCache = (d.alerts || []).map(a => ({ level: a.level, text: a.text }));
+    } catch (e) { _notifCache = []; }
+    return _notifCache;
+  }
+  function clearNotifCache() { _notifCache = null; }
 
   // ---------------- Modais ----------------
   function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
@@ -141,75 +179,260 @@
   }
 
   // ---------------- Shell / Navegacao ----------------
-  const NAV_RADAR = [
-    ['dashboard', 'Dashboard', '📊'],
-    ['vida', 'Projeto de Vida', '🎯'],
-    ['cartoes', 'Cartoes', '💳'],
-    ['parcelas', 'Parcelamentos', '🧾'],
-    ['emprestimos', 'Emprestimos', '🤝'],
-    ['receber', 'Valores a Receber', '💰'],
-    ['calendario', 'Calendario', '📅'],
-    ['fluxo', 'Fluxo de Caixa', '📈'],
-    ['recorrentes', 'Contas Recorrentes', '🔁'],
-    ['importar', 'Importar', '📥'],
-    ['relatorios', 'Relatorios', '📁'],
-    ['simulador', 'Simulador', '🔮'],
-    ['config', 'Configuracoes', '⚙️'],
+  const NAV_RADAR_GROUPS = [
+    { key: 'financeiro', label: 'Financeiro', items: [
+      ['dashboard', 'Dashboard', '📊'],
+      ['cartoes', 'Cartoes', '💳'],
+      ['parcelas', 'Parcelamentos', '🧾'],
+      ['emprestimos', 'Emprestimos', '🤝'],
+      ['receber', 'Valores a Receber', '💰'],
+      ['fluxo', 'Fluxo de Caixa', '📈'],
+      ['recorrentes', 'Contas Recorrentes', '🔁'],
+    ]},
+    { key: 'planejamento', label: 'Planejamento', items: [
+      ['calendario', 'Calendario', '📅'],
+      ['vida', 'Projetos', '🎯'],
+    ]},
+    { key: 'analises', label: 'Analises', items: [
+      ['relatorios', 'Relatorios', '📁'],
+      ['simulador', 'Simulador', '🔮'],
+    ]},
+    { key: 'sistema', label: 'Sistema', items: [
+      ['importar', 'Importar', '📥'],
+      ['config', 'Configuracoes', '⚙️'],
+    ]},
   ];
-  const NAV_EVENTOS = [
-    ['eventos', 'Eventos', '🎉'],
-  ];
+  const NAV_RADAR_FLAT = NAV_RADAR_GROUPS.flatMap(g => g.items);
+  const NAV_EVENTOS = [['eventos', 'Eventos', '🎉']];
+
+  const PAGE_LABELS = Object.fromEntries([
+    ...NAV_RADAR_FLAT,
+    ...NAV_EVENTOS,
+  ].map(([k, l]) => [k, l]));
+
+  function navGroupHTML(group) {
+    const open = state.navGroups[group.key] !== false;
+    const itemsHTML = group.items.map(([k, l, i]) =>
+      `<div class="nav-link" data-page="${k}"><span>${i}</span>${l}</div>`
+    ).join('');
+    const estHeight = group.items.length * 44;
+    return `<div class="nav-group" data-group="${group.key}">
+      <div class="nav-group-header" data-toggle="${group.key}">
+        <span class="nav-group-label">${group.label}</span>
+        <span class="nav-group-arrow ${open ? 'open' : ''}">▶</span>
+      </div>
+      <div class="nav-group-items ${open ? '' : 'collapsed'}" style="max-height:${open ? estHeight + 'px' : '0'}">${itemsHTML}</div>
+    </div>`;
+  }
 
   function renderShell() {
     const isEv = state.app === 'eventos';
-    const NAV = isEv ? NAV_EVENTOS : NAV_RADAR;
     const app = document.getElementById('app');
+    const sidebarContent = isEv
+      ? NAV_EVENTOS.map(([k, l, i]) => `<div class="nav-link" data-page="${k}"><span>${i}</span>${l}</div>`).join('')
+      : NAV_RADAR_GROUPS.map(navGroupHTML).join('');
+    const mobileOpts = isEv
+      ? NAV_EVENTOS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')
+      : NAV_RADAR_FLAT.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
     app.innerHTML = `
       <div class="flex min-h-screen">
-        <aside class="hidden md:flex flex-col w-64 bg-sand border-r border-line p-4 gap-1 sticky top-0 h-screen">
-          <div class="flex items-center gap-3 px-2 mb-6 mt-2">
-            <span class="w-11 h-11 rounded-2xl flex items-center justify-center text-white text-lg font-display" style="background:#B9502C">${isEv ? 'e' : 'r'}</span>
-            <div><div class="font-display text-lg leading-tight">${isEv ? 'Eventos' : 'Radar'}</div><div class="text-[10px] tracking-widest text-muted uppercase">${isEv ? 'Organizacao' : 'Financeiro'}</div></div>
+        <!-- Sidebar overlay mobile -->
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+        <!-- Sidebar mobile deslizante -->
+        <div class="sidebar-mobile" id="sidebar-mobile">
+          <div class="flex items-center gap-3 px-2 mb-5 mt-1">
+            <span class="w-10 h-10 rounded-2xl flex items-center justify-center text-white text-base font-display" style="background:#B9502C">${isEv ? 'e' : 'r'}</span>
+            <div><div class="font-display text-base leading-tight">${isEv ? 'Eventos' : 'Radar'}</div><div class="text-[10px] tracking-widest text-muted uppercase">${isEv ? 'Organizacao' : 'Financeiro'}</div></div>
+          </div>
+          <div class="nav-link" id="to-hub-mob"><span>←</span>Projetos</div>
+          <nav id="nav-mob" class="mt-2">${sidebarContent}</nav>
+          <button class="nav-link mt-4" id="logout-mob"><span>🚪</span>Sair</button>
+        </div>
+        <!-- Sidebar desktop -->
+        <aside class="hidden md:flex flex-col w-60 bg-sand border-r border-line p-3 gap-1 sticky top-0 h-screen overflow-y-auto">
+          <div class="flex items-center gap-3 px-2 mb-4 mt-2">
+            <span class="w-10 h-10 rounded-2xl flex items-center justify-center text-white text-base font-display" style="background:#B9502C">${isEv ? 'e' : 'r'}</span>
+            <div><div class="font-display text-base leading-tight">${isEv ? 'Eventos' : 'Radar'}</div><div class="text-[10px] tracking-widest text-muted uppercase">${isEv ? 'Organizacao' : 'Financeiro'}</div></div>
           </div>
           <div class="nav-link" id="to-hub"><span>←</span>Projetos</div>
-          <div class="nav-label">Este projeto</div>
-          <nav id="nav" class="flex-1 space-y-1 overflow-auto">
-            ${NAV.map(([k, l, i]) => `<div class="nav-link" data-page="${k}"><span>${i}</span>${l}</div>`).join('')}
-          </nav>
+          <nav id="nav" class="flex-1 mt-1">${sidebarContent}</nav>
           <button class="nav-link mt-2" id="logout"><span>🚪</span>Sair</button>
         </aside>
-        <div class="flex-1 min-w-0">
-          <header class="md:hidden flex items-center justify-between p-3 border-b border-line bg-panel sticky top-0 z-20">
-            <button class="font-bold" id="to-hub-m">← ${isEv ? '🎉 Eventos' : '📡 Radar'}</button>
-            <select id="mobile-nav" class="input w-auto">${NAV.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
-          </header>
-          <main id="content" class="p-4 md:p-8 max-w-7xl mx-auto"></main>
+        <!-- Conteudo principal -->
+        <div class="flex-1 min-w-0 flex flex-col">
+          <!-- Topbar: busca + notificacoes + breadcrumb -->
+          <div class="topbar" id="topbar">
+            <!-- Hamburguer mobile -->
+            <button class="md:hidden btn btn-icon btn-ghost" id="menu-btn">☰</button>
+            <!-- Breadcrumb -->
+            <div class="topbar-breadcrumb hidden md:block">Dashboard &rsaquo; <b id="breadcrumb-page">Dashboard</b></div>
+            <!-- Busca global -->
+            <div class="search-wrap" id="search-wrap">
+              <span class="search-icon">🔍</span>
+              <input class="search-input" id="global-search" type="text" placeholder="Buscar em tudo..." autocomplete="off"/>
+              <div class="search-dropdown" id="search-dropdown" style="display:none"></div>
+            </div>
+            <!-- Notificacoes -->
+            <div class="relative" id="notif-wrap">
+              <button class="btn btn-icon btn-ghost notif-btn" id="notif-btn">🔔<span class="notif-badge" id="notif-badge" style="display:none">0</span></button>
+              <div class="notif-panel" id="notif-panel" style="display:none">
+                <div class="notif-header">Notificacoes <button class="text-muted text-xs" id="notif-close">×</button></div>
+                <div class="notif-list" id="notif-list"><div class="notif-empty">Carregando...</div></div>
+              </div>
+            </div>
+          </div>
+          <main id="content" class="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1"></main>
         </div>
       </div>`;
-    $('#logout').addEventListener('click', logout);
+
+    // --- Sidebar desktop: grupos recolhíveis ---
+    function bindGroups(navEl) {
+      if (!navEl) return;
+      navEl.querySelectorAll('[data-toggle]').forEach(h => {
+        h.addEventListener('click', () => {
+          const gk = h.dataset.toggle;
+          state.navGroups[gk] = !state.navGroups[gk];
+          saveNavGroups();
+          const arrow = h.querySelector('.nav-group-arrow');
+          const items = h.nextElementSibling;
+          const open = state.navGroups[gk];
+          if (arrow) arrow.classList.toggle('open', open);
+          if (items) {
+            if (open) {
+              const h2 = items.querySelectorAll('.nav-link').length * 44;
+              items.style.maxHeight = h2 + 'px';
+              items.classList.remove('collapsed');
+            } else {
+              items.style.maxHeight = '0';
+              items.classList.add('collapsed');
+            }
+          }
+        });
+      });
+      navEl.querySelectorAll('.nav-link[data-page]').forEach(n => n.addEventListener('click', () => go(n.dataset.page)));
+    }
+    bindGroups($('#nav'));
+    bindGroups($('#nav-mob'));
+
+    // --- Logout ---
+    if ($('#logout')) $('#logout').addEventListener('click', logout);
+    if ($('#logout-mob')) $('#logout-mob').addEventListener('click', logout);
+
+    // --- Hub ---
     if ($('#to-hub')) $('#to-hub').addEventListener('click', () => { state.app = 'hub'; renderHub(); });
-    if ($('#to-hub-m')) $('#to-hub-m').addEventListener('click', () => { state.app = 'hub'; renderHub(); });
-    document.querySelectorAll('#nav .nav-link').forEach(n => n.addEventListener('click', () => go(n.dataset.page)));
-    const mob = $('#mobile-nav'); if (mob) mob.addEventListener('change', () => go(mob.value));
+    if ($('#to-hub-mob')) $('#to-hub-mob').addEventListener('click', () => { state.app = 'hub'; renderHub(); });
+
+    // --- Mobile sidebar ---
+    const overlay = $('#sidebar-overlay');
+    const sidebarMob = $('#sidebar-mobile');
+    if ($('#menu-btn')) $('#menu-btn').addEventListener('click', () => { sidebarMob.classList.add('open'); overlay.classList.add('open'); });
+    if (overlay) overlay.addEventListener('click', () => { sidebarMob.classList.remove('open'); overlay.classList.remove('open'); });
+
+    // --- Busca global ---
+    const searchInput = $('#global-search');
+    const searchDrop = $('#search-dropdown');
+    let _searchTimer;
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        clearTimeout(_searchTimer);
+        const q = searchInput.value.trim();
+        if (!q || q.length < 2) { searchDrop.style.display = 'none'; return; }
+        _searchTimer = setTimeout(async () => {
+          const res = await globalSearch(q);
+          const keys = Object.keys(res);
+          if (!keys.length) {
+            searchDrop.innerHTML = `<div class="search-empty">Nenhum resultado para "${esc(q)}"</div>`;
+          } else {
+            searchDrop.innerHTML = keys.map(k => {
+              const cat = res[k];
+              const items = cat.items.slice(0, 5).map(it =>
+                `<div class="search-item" data-go="${it.page}"><span class="si-icon">${cat.icon}</span><div><div class="si-main">${esc(it.title)}</div><div class="si-sub">${esc(it.sub)}</div></div></div>`
+              ).join('');
+              return `<div class="search-cat">${cat.label}</div>${items}`;
+            }).join('');
+            searchDrop.querySelectorAll('[data-go]').forEach(el => el.addEventListener('click', () => {
+              searchInput.value = ''; searchDrop.style.display = 'none'; go(el.dataset.go);
+            }));
+          }
+          searchDrop.style.display = 'block';
+        }, 280);
+      });
+      searchInput.addEventListener('blur', () => setTimeout(() => { searchDrop.style.display = 'none'; }, 200));
+      searchInput.addEventListener('focus', () => { if (searchInput.value.trim().length >= 2) searchDrop.style.display = 'block'; });
+    }
+
+    // --- Notificacoes ---
+    const notifBtn = $('#notif-btn');
+    const notifPanel = $('#notif-panel');
+    const notifBadge = $('#notif-badge');
+    const notifList = $('#notif-list');
+    if (notifBtn) {
+      loadNotifs().then(notifs => {
+        const high = notifs.filter(n => n.level === 'high' || n.level === 'medium').length;
+        if (high > 0) { notifBadge.textContent = high; notifBadge.style.display = 'flex'; }
+        if (notifs.length === 0) {
+          notifList.innerHTML = '<div class="notif-empty">Voce nao possui notificacoes no momento.</div>';
+        } else {
+          notifList.innerHTML = notifs.map(n => {
+            const icon = n.level === 'high' ? '⚠️' : n.level === 'medium' ? '🔔' : 'ℹ️';
+            return `<div class="notif-item ni-${n.level}"><span class="ni-icon">${icon}</span><div><div class="ni-text">${esc(n.text)}</div></div></div>`;
+          }).join('');
+        }
+      });
+      notifBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        notifPanel.style.display = notifPanel.style.display === 'none' ? 'block' : 'none';
+      });
+      if ($('#notif-close')) $('#notif-close').addEventListener('click', () => { notifPanel.style.display = 'none'; });
+      document.addEventListener('click', (e) => { if (!$('#notif-wrap').contains(e.target)) notifPanel.style.display = 'none'; }, { once: false });
+    }
   }
 
   function setActive() {
-    document.querySelectorAll('#nav .nav-link').forEach(n => n.classList.toggle('active', n.dataset.page === state.page));
-    const mob = $('#mobile-nav'); if (mob) mob.value = state.page;
+    // Atualiza links ativos no desktop e mobile
+    document.querySelectorAll('#nav .nav-link[data-page], #nav-mob .nav-link[data-page]').forEach(n =>
+      n.classList.toggle('active', n.dataset.page === state.page)
+    );
+    // Abre o grupo que contém a página ativa
+    NAV_RADAR_GROUPS.forEach(g => {
+      if (g.items.some(([k]) => k === state.page)) {
+        if (!state.navGroups[g.key]) {
+          state.navGroups[g.key] = true;
+          saveNavGroups();
+          // Atualiza visual
+          ['#nav', '#nav-mob'].forEach(sel => {
+            const navEl = $(sel);
+            if (!navEl) return;
+            const groupEl = navEl.querySelector(`[data-group="${g.key}"]`);
+            if (!groupEl) return;
+            const arrow = groupEl.querySelector('.nav-group-arrow');
+            const items = groupEl.querySelector('.nav-group-items');
+            if (arrow) arrow.classList.add('open');
+            if (items) { items.style.maxHeight = (g.items.length * 44) + 'px'; items.classList.remove('collapsed'); }
+          });
+        }
+      }
+    });
+    // Breadcrumb
+    const bc = $('#breadcrumb-page');
+    if (bc) bc.textContent = PAGE_LABELS[state.page] || state.page;
   }
 
   async function go(page) {
     state.page = page;
     setActive();
+    // Limpa cache de busca e notificacoes ao navegar (dados podem ter mudado)
+    clearSearchCache();
+    clearNotifCache();
     const c = $('#content');
     c.innerHTML = `<div class="text-muted py-20 text-center">Carregando…</div>`;
     try { await PAGES[page](); } catch (e) { c.innerHTML = `<div class="card p-6 text-bad">Erro: ${esc(e.message)}</div>`; }
   }
 
   function pageHeader(title, subtitle, actionsHTML = '') {
-    return `<div class="flex items-start justify-between gap-4 mb-6 flex-wrap">
-      <div><h1 class="text-2xl font-bold">${esc(title)}</h1>${subtitle ? `<p class="text-muted text-sm mt-1">${esc(subtitle)}</p>` : ''}</div>
-      <div class="flex gap-2">${actionsHTML}</div>
+    return `<div class="flex items-start justify-between gap-3 mb-6 flex-wrap">
+      <div class="min-w-0"><h1 class="text-xl md:text-2xl font-bold leading-tight">${esc(title)}</h1>${subtitle ? `<p class="text-muted text-xs md:text-sm mt-1">${esc(subtitle)}</p>` : ''}</div>
+      ${actionsHTML ? `<div class="flex gap-2 flex-wrap shrink-0">${actionsHTML}</div>` : ''}
     </div>`;
   }
 
