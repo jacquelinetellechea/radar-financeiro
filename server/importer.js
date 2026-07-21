@@ -136,25 +136,50 @@ async function parsePDF(buffer) {
   const data = await pdfParse(buffer);
   const lines = data.text.split('\n').map(l => l.trim()).filter(Boolean);
 
+
   // ano/mes de referencia (a partir da 1a data completa: vencimento/fechamento)
   let refYear = new Date().getFullYear(), refMonth = new Date().getMonth() + 1;
   const full = data.text.match(/(\d{2})\/(\d{2})\/(\d{4})/);
   if (full) { refMonth = parseInt(full[2], 10); refYear = parseInt(full[3], 10); }
 
+  const MESES = { 'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04', 'mai': '05', 'jun': '06', 'jul': '07', 'ago': '08', 'set': '09', 'out': '10', 'nov': '11', 'dez': '12' };
+
   const raw = [];
   for (const line of lines) {
     if (NOISE.test(line)) continue;
-    const head = line.match(/^(\d{2})\/(\d{2})\s*(.+)$/);
-    if (!head) continue;
-    const parsed = splitDescInstAmount(head[3].trim());
+    // Tenta formato padrão DD/MM ou o formato do Banco Inter: DD de MMM. AAAA
+    let dd, mm, year = refYear, rest;
+    const headPadrao = line.match(/^(\d{2})\/(\d{2})\s*(.+)$/);
+    // No Inter o texto vem grudado: '05 de jun. 2026Estapar Reserva 25NCSD-R$ 55,00'
+    const headInter = line.match(/^(\d{2})\s+de\s+([a-z]{3})\.?\s+(\d{4})(.*)$/i);
+    
+    if (headPadrao) {
+      dd = headPadrao[1]; mm = headPadrao[2]; rest = headPadrao[3];
+      if (parseInt(mm, 10) > refMonth) year = refYear - 1; // compra do ano anterior
+    } else if (headInter) {
+      dd = headInter[1];
+      const mesExt = headInter[2].toLowerCase();
+      mm = MESES[mesExt] || '01';
+      year = parseInt(headInter[3], 10);
+      rest = headInter[4];
+      // O Inter coloca um hífen no beneficiário grudado no valor, vamos removê-lo
+      rest = rest.replace(/-\+?\s*R\$\s*/, ' ');
+      // Para crédito, pode ter -+ R$
+      rest = rest.replace(/-\+\s*R\$\s*/, ' -');
+    } else {
+      continue;
+    }
+
+    // O Inter pode colocar "R$" com espaço e também sinal de "+" para crédito
+    // Também temos que lidar com "R$ 55,00" ou "+ R$ 1.000,00" ou "R$ -50,00"
+    rest = rest.replace(/\+\s*R\$\s*/, '-').replace(/R\$\s*/, '').replace(/\s+/g, ' ');
+    
+    const parsed = splitDescInstAmount(rest.trim());
     if (!parsed) continue;
     let desc = parsed.desc.replace(/\s{2,}/g, ' ').trim();
     if (desc.replace(/[^a-zA-Z]/g, '').length < 3) continue; // precisa ter nome real
     const amount = parsed.amount;
     if (isNaN(amount) || amount === 0) continue;
-    const dd = head[1], mm = head[2];
-    let year = refYear;
-    if (parseInt(mm, 10) > refMonth) year = refYear - 1; // compra do ano anterior
     raw.push({ date: `${year}-${mm}-${dd}`, rawDesc: desc, amount: Math.abs(amount), isIncome: amount < 0, installment: parsed.installment });
   }
 
