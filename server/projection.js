@@ -94,10 +94,10 @@ function monthlyProjection(data, count = 12, startKey = currentMonthKey()) {
 /** Situacao de cada cartao: limite disponivel, comprometido e proxima fatura. */
 function cardsStatus(data) {
   const cm = currentMonthKey();
+  const charges = data.cardCharges || [];
   return data.cards.map(card => {
     let committed = 0;   // parcelas nao pagas (limite comprometido)
     let nextInvoice = 0;
-    const nextKey = cm;
     const futureMonths = {};
     for (const inst of data.installments) {
       if (inst.cardId !== card.id) continue;
@@ -106,6 +106,13 @@ function cardsStatus(data) {
         if (it.month === cm) nextInvoice += it.amount;
         if (it.month >= cm) futureMonths[it.month] = round2((futureMonths[it.month] || 0) + it.amount);
       }
+    }
+    // Soma encargos avulsos do mes atual
+    for (const c of charges) {
+      if (c.cardId !== card.id) continue;
+      committed += c.amount;
+      if (c.month === cm) nextInvoice += c.amount;
+      if (c.month >= cm) futureMonths[c.month] = round2((futureMonths[c.month] || 0) + c.amount);
     }
     committed = round2(committed);
     return {
