@@ -564,7 +564,10 @@
     });
   }
   async function cardHistory(id, selectedMonth) {
-    const all = await api('GET', '/installments');
+    const [all, cardName] = await Promise.all([
+      api('GET', '/installments'),
+      api('GET', '/cards').then(cs => { const c = cs.find(x => x.id === id); return c ? c.name : ''; })
+    ]);
     const items = all.filter(i => i.cardId === id);
 
     // Coleta todos os meses que aparecem nas parcelas deste cartao
@@ -572,9 +575,8 @@
     items.forEach(i => (i.items || []).forEach(it => {
       if (it.dueISO) monthSet.add(it.dueISO.slice(0, 7));
     }));
-    const months = Array.from(monthSet).sort().reverse(); // mais recente primeiro
+    const months = Array.from(monthSet).sort().reverse();
 
-    // Mes selecionado: padrao = mes atual ou o mais recente disponivel
     const nowMonth = new Date().toISOString().slice(0, 7);
     const activeMonth = selectedMonth || (months.includes(nowMonth) ? nowMonth : months[0]);
 
@@ -583,19 +585,24 @@
     items.forEach(i => {
       (i.items || []).forEach(it => {
         if (it.dueISO && it.dueISO.slice(0, 7) === activeMonth) {
-          monthItems.push({ ...it, description: i.description, category: i.category, numInstallments: i.numInstallments, parentId: i.id, parent: i });
+          monthItems.push({ ...it, description: i.description, category: i.category, numInstallments: i.numInstallments, parentId: i.id, parent: i, isCharge: false });
         }
       });
     });
     monthItems.sort((a, b) => (a.dueISO || '').localeCompare(b.dueISO || ''));
-    const totalMes = monthItems.reduce((s, it) => s + (it.amount || 0), 0);
+
+    // Encargos avulsos do mes
+    const charges = activeMonth ? await api('GET', `/card-charges?cardId=${id}&month=${activeMonth}`) : [];
+
+    const totalParcelas = monthItems.reduce((s, it) => s + (it.amount || 0), 0);
+    const totalEncargos = charges.reduce((s, c) => s + (c.amount || 0), 0);
+    const totalMes = totalParcelas + totalEncargos;
     const pagas = monthItems.filter(it => it.paid).reduce((s, it) => s + (it.amount || 0), 0);
     const pendente = totalMes - pagas;
 
     const [yA, mA] = (activeMonth || '').split('-').map(Number);
     const labelMes = activeMonth ? new Date(yA, mA - 1, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' }) : '—';
 
-    // Seletor de mes
     const selectorHtml = months.length > 1 ? `
       <div class="flex gap-2 flex-wrap mb-4">
         ${months.map(m => {
@@ -617,19 +624,50 @@
             <button class="chip" data-hist-del="${it.parentId}">🗑️</button>
           </td>
         </tr>`).join('')
-      : `<tr><td colspan="6" class="text-center text-muted py-6">Nenhuma parcela neste mes.</td></tr>`;
+      : `<tr><td colspan="6" class="text-center text-muted py-4">Nenhuma parcela neste mes.</td></tr>`;
 
-    openModal(`Fatura por mes · ${esc(items[0]?.cardName || '')}`, `
+    const chargesHtml = charges.length
+      ? charges.map(c => `<tr class="bg-warn/5">
+          <td>${c.dateISO ? c.dateISO.split('-').reverse().join('/') : '—'}</td>
+          <td><b>${esc(c.description)}</b></td>
+          <td><span class="chip bg-warn/20 text-warn">${esc(c.category)}</span></td>
+          <td class="text-warn">${brl(c.amount)}</td>
+          <td>—</td>
+          <td class="text-right"><button class="chip" data-charge-del="${c.id}">🗑️</button></td>
+        </tr>`).join('')
+      : '';
+
+    openModal(`Fatura por mes · ${esc(cardName)}`, `
       ${selectorHtml}
       <div class="grid grid-cols-3 gap-3 mb-4 text-sm">
         <div class="card p-3 text-center"><div class="text-muted text-xs mb-1">Total ${labelMes}</div><b class="text-bad">${brl(totalMes)}</b></div>
         <div class="card p-3 text-center"><div class="text-muted text-xs mb-1">Pagas</div><b class="text-good">${brl(pagas)}</b></div>
         <div class="card p-3 text-center"><div class="text-muted text-xs mb-1">Pendente</div><b class="text-warn">${brl(pendente)}</b></div>
       </div>
-      <div class="max-h-80 overflow-auto">
+      <div class="max-h-72 overflow-auto">
         <table><thead><tr><th>Venc.</th><th>Descricao</th><th>Categoria</th><th>Valor</th><th>Paga</th><th></th></tr></thead>
-        <tbody>${rowsHtml}</tbody></table>
-      </div>`, { wide: true });
+        <tbody>${rowsHtml}${chargesHtml}</tbody></table>
+      </div>
+      ${activeMonth ? `
+      <div class="mt-4 border-t border-line pt-4">
+        <h4 class="font-semibold text-sm mb-2">+ Adicionar encargo / lancamento avulso</h4>
+        <div class="grid grid-cols-2 gap-2">
+          <input class="input" id="chg-desc" placeholder="Descricao (ex: Juros rotativo)" />
+          <select class="input" id="chg-cat">
+            <option value="Encargos">Encargos</option>
+            <option value="Juros">Juros</option>
+            <option value="Multa">Multa</option>
+            <option value="IOF">IOF</option>
+            <option value="Outros">Outros</option>
+          </select>
+          <input class="input" id="chg-amt" type="number" step="0.01" min="0" placeholder="Valor (R$)" />
+          <input class="input" id="chg-date" type="date" value="${activeMonth}-01" />
+        </div>
+        <div class="flex justify-end mt-2">
+          <button class="btn btn-primary" id="chg-add">Adicionar</button>
+        </div>
+      </div>` : ''}
+    `, { wide: true });
 
     document.querySelectorAll('[data-month-sel]').forEach(b => b.addEventListener('click', () => cardHistory(id, b.dataset.monthSel)));
     document.querySelectorAll('[data-hist-edit]').forEach(b => b.addEventListener('click', () => {
@@ -641,9 +679,27 @@
       confirmModal('Excluir esta compra e suas parcelas?', async () => {
         await api('DELETE', '/installments/' + b.dataset.histDel);
         toast('Excluido', 'ok');
-        closeModal();
+        cardHistory(id, activeMonth);
       });
     }));
+    document.querySelectorAll('[data-charge-del]').forEach(b => b.addEventListener('click', () => {
+      confirmModal('Remover este encargo?', async () => {
+        await api('DELETE', '/card-charges/' + b.dataset.chargeDel);
+        toast('Encargo removido', 'ok');
+        cardHistory(id, activeMonth);
+      });
+    }));
+    const addBtn = document.getElementById('chg-add');
+    if (addBtn) addBtn.addEventListener('click', async () => {
+      const desc = document.getElementById('chg-desc').value.trim();
+      const cat = document.getElementById('chg-cat').value;
+      const amt = parseFloat(document.getElementById('chg-amt').value);
+      const dateISO = document.getElementById('chg-date').value;
+      if (!amt || amt <= 0) { toast('Informe um valor valido', 'err'); return; }
+      await api('POST', '/card-charges', { cardId: id, month: activeMonth, description: desc || cat, category: cat, amount: amt, dateISO });
+      toast('Encargo adicionado', 'ok');
+      cardHistory(id, activeMonth);
+    });
   }
 
   // ---- Parcelamentos ----

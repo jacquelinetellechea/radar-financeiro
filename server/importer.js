@@ -105,8 +105,10 @@ function parseExcel(buffer) {
   return normalizeRows(rows);
 }
 
-// Linhas que NAO sao compras (resumos, totais, encargos, pagamentos da fatura).
-const NOISE = /(pagamento|^total|total d|limite|saldo|m[ií]nimo|encargos|juros|multa|\biof\b|pr[oó]xima fatura|demais faturas|dispon[ií]vel|utilizado|estorno|subtotal|lan[çc]amento|\bcet\b|valor total financiado|valor solicitado)/i;
+// Linhas que NAO sao compras (resumos, totais, pagamentos da fatura).
+const NOISE = /(pagamento|^total|total d|limite|saldo|m[ií]nimo|pr[oó]xima fatura|demais faturas|dispon[ií]vel|utilizado|estorno|subtotal|lan[çc]amento|\bcet\b|valor total financiado|valor solicitado)/i;
+// Linhas que sao encargos (juros, multa, IOF) - capturadas como categoria especial
+const ENCARGO = /(encargo|juros|multa|\biof\b)/i;
 
 /**
  * PDF de fatura (assistido). Detecta compras pelo padrao "DD/MM ... valor",
@@ -147,6 +149,7 @@ async function parsePDF(buffer) {
   const raw = [];
   for (const line of lines) {
     if (NOISE.test(line)) continue;
+    const isEncargo = ENCARGO.test(line);
     // Tenta formato padrão DD/MM ou o formato do Banco Inter: DD de MMM. AAAA
     let dd, mm, year = refYear, rest;
     const headPadrao = line.match(/^(\d{2})\/(\d{2})\s*(.+)$/);
@@ -180,7 +183,7 @@ async function parsePDF(buffer) {
     if (desc.replace(/[^a-zA-Z]/g, '').length < 3) continue; // precisa ter nome real
     const amount = parsed.amount;
     if (isNaN(amount) || amount === 0) continue;
-    raw.push({ date: `${year}-${mm}-${dd}`, rawDesc: desc, amount: Math.abs(amount), isIncome: amount < 0, installment: parsed.installment });
+    raw.push({ date: `${year}-${mm}-${dd}`, rawDesc: desc, amount: Math.abs(amount), isIncome: amount < 0, installment: parsed.installment, isEncargo });
   }
 
   // colapsa parcelas repetidas da mesma compra: mantem a de menor "current"
@@ -202,7 +205,8 @@ async function parsePDF(buffer) {
     amount: r.amount,
     isIncome: r.isIncome,
     installment: r.installment,
-    category: guessCategory(r.rawDesc)
+    isEncargo: !!r.isEncargo,
+    category: r.isEncargo ? 'Encargos' : guessCategory(r.rawDesc)
   }));
 }
 

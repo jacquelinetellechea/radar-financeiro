@@ -342,6 +342,40 @@ app.delete('/api/transactions/:id', (req, res) => {
   ok(res, { success: true });
 });
 
+// ---------- Encargos / lancamentos avulsos de cartao ----------
+// Armazenados em d.cardCharges: [{ id, cardId, month, description, category, amount, dateISO, createdAt }]
+app.get('/api/card-charges', (req, res) => {
+  const d = store.getData();
+  if (!d.cardCharges) d.cardCharges = [];
+  const { cardId, month } = req.query;
+  let list = d.cardCharges;
+  if (cardId) list = list.filter(c => c.cardId === cardId);
+  if (month) list = list.filter(c => c.month === month);
+  ok(res, list);
+});
+app.post('/api/card-charges', (req, res) => {
+  const d = store.getData();
+  if (!d.cardCharges) d.cardCharges = [];
+  const { cardId, month, description, category, amount, dateISO } = req.body || {};
+  if (!cardId || !month || !amount) return bad(res, 'cardId, month e amount sao obrigatorios.');
+  const date = dateISO || month + '-01';
+  const charge = {
+    id: store.id(), cardId, month, description: description || 'Encargo',
+    category: category || 'Encargos', amount: Math.round(Number(amount) * 100) / 100,
+    dateISO: date, createdAt: new Date().toISOString()
+  };
+  d.cardCharges.push(charge);
+  store.scheduleBackup();
+  ok(res, charge);
+});
+app.delete('/api/card-charges/:id', (req, res) => {
+  const d = store.getData();
+  if (!d.cardCharges) d.cardCharges = [];
+  d.cardCharges = d.cardCharges.filter(c => c.id !== req.params.id);
+  store.scheduleBackup();
+  ok(res, { success: true });
+});
+
 // ---------- Projeto de Vida ----------
 app.get('/api/projects', (req, res) => ok(res, store.getData().projects.map(projmod.projectSummary)));
 app.get('/api/projects/:id', (req, res) => {
