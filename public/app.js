@@ -563,21 +563,75 @@
       closeModal(); toast('Cartao salvo', 'ok'); go('cartoes');
     });
   }
-  async function cardHistory(id) {
+  async function cardHistory(id, selectedMonth) {
     const all = await api('GET', '/installments');
     const items = all.filter(i => i.cardId === id);
-    openModal('Historico de compras', items.length ? `<div class="max-h-96 overflow-auto"><table><thead><tr><th>Descricao</th><th>Categoria</th><th>Total</th><th>Parcelas</th><th></th></tr></thead><tbody>
-      ${items.map(i => `<tr>
-        <td>${esc(i.description)}</td>
-        <td><span class="chip">${esc(i.category)}</span></td>
-        <td>${brl(i.totalAmount)}</td>
-        <td>${i.numInstallments}x</td>
-        <td class="text-right whitespace-nowrap">
-          <button class="chip" data-hist-edit="${i.id}">Editar</button>
-          <button class="chip" data-hist-del="${i.id}">🗑️</button>
-        </td>
-      </tr>`).join('')}
-    </tbody></table></div>` : '<p class="text-muted">Sem compras neste cartao.</p>', { wide: true });
+
+    // Coleta todos os meses que aparecem nas parcelas deste cartao
+    const monthSet = new Set();
+    items.forEach(i => (i.items || []).forEach(it => {
+      if (it.dueISO) monthSet.add(it.dueISO.slice(0, 7));
+    }));
+    const months = Array.from(monthSet).sort().reverse(); // mais recente primeiro
+
+    // Mes selecionado: padrao = mes atual ou o mais recente disponivel
+    const nowMonth = new Date().toISOString().slice(0, 7);
+    const activeMonth = selectedMonth || (months.includes(nowMonth) ? nowMonth : months[0]);
+
+    // Parcelas do mes selecionado
+    const monthItems = [];
+    items.forEach(i => {
+      (i.items || []).forEach(it => {
+        if (it.dueISO && it.dueISO.slice(0, 7) === activeMonth) {
+          monthItems.push({ ...it, description: i.description, category: i.category, numInstallments: i.numInstallments, parentId: i.id, parent: i });
+        }
+      });
+    });
+    monthItems.sort((a, b) => (a.dueISO || '').localeCompare(b.dueISO || ''));
+    const totalMes = monthItems.reduce((s, it) => s + (it.amount || 0), 0);
+    const pagas = monthItems.filter(it => it.paid).reduce((s, it) => s + (it.amount || 0), 0);
+    const pendente = totalMes - pagas;
+
+    const [yA, mA] = (activeMonth || '').split('-').map(Number);
+    const labelMes = activeMonth ? new Date(yA, mA - 1, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' }) : '—';
+
+    // Seletor de mes
+    const selectorHtml = months.length > 1 ? `
+      <div class="flex gap-2 flex-wrap mb-4">
+        ${months.map(m => {
+          const [y2, m2] = m.split('-').map(Number);
+          const lbl = new Date(y2, m2 - 1, 1).toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+          return `<button class="chip ${m === activeMonth ? 'bg-accent text-white' : ''}" data-month-sel="${m}">${lbl}</button>`;
+        }).join('')}
+      </div>` : '';
+
+    const rowsHtml = monthItems.length
+      ? monthItems.map(it => `<tr>
+          <td>${it.dueISO ? it.dueISO.split('-').reverse().join('/') : '—'}</td>
+          <td><b>${esc(it.description)}</b>${it.numInstallments > 1 ? `<div class="text-xs text-muted">${it.number}/${it.numInstallments}</div>` : ''}</td>
+          <td><span class="chip">${esc(it.category)}</span></td>
+          <td>${brl(it.amount)}</td>
+          <td class="text-center">${it.paid ? '<span class="text-good">✓</span>' : '<span class="text-muted">—</span>'}</td>
+          <td class="text-right whitespace-nowrap">
+            <button class="chip" data-hist-edit="${it.parentId}">Editar</button>
+            <button class="chip" data-hist-del="${it.parentId}">🗑️</button>
+          </td>
+        </tr>`).join('')
+      : `<tr><td colspan="6" class="text-center text-muted py-6">Nenhuma parcela neste mes.</td></tr>`;
+
+    openModal(`Fatura por mes · ${esc(items[0]?.cardName || '')}`, `
+      ${selectorHtml}
+      <div class="grid grid-cols-3 gap-3 mb-4 text-sm">
+        <div class="card p-3 text-center"><div class="text-muted text-xs mb-1">Total ${labelMes}</div><b class="text-bad">${brl(totalMes)}</b></div>
+        <div class="card p-3 text-center"><div class="text-muted text-xs mb-1">Pagas</div><b class="text-good">${brl(pagas)}</b></div>
+        <div class="card p-3 text-center"><div class="text-muted text-xs mb-1">Pendente</div><b class="text-warn">${brl(pendente)}</b></div>
+      </div>
+      <div class="max-h-80 overflow-auto">
+        <table><thead><tr><th>Venc.</th><th>Descricao</th><th>Categoria</th><th>Valor</th><th>Paga</th><th></th></tr></thead>
+        <tbody>${rowsHtml}</tbody></table>
+      </div>`, { wide: true });
+
+    document.querySelectorAll('[data-month-sel]').forEach(b => b.addEventListener('click', () => cardHistory(id, b.dataset.monthSel)));
     document.querySelectorAll('[data-hist-edit]').forEach(b => b.addEventListener('click', () => {
       closeModal();
       const item = items.find(i => i.id === b.dataset.histEdit);
@@ -787,28 +841,96 @@
   };
 
   // ---- Fluxo de Caixa ----
-  PAGES.fluxo = async function (count) {
+  PAGES.fluxo = async function (count, selectedMonth) {
     count = count || 12;
     const proj = await api('GET', '/projection?count=' + count);
+
+    // Botoes de periodo + seletor de mes
+    const periodoButtons = [12, 24, 36].map(n =>
+      `<button class="btn ${n == count ? 'btn-primary' : 'btn-ghost'}" data-n="${n}">${n} meses</button>`).join('');
+
+    const monthOptions = proj.map(p =>
+      `<option value="${p.month}" ${p.month === selectedMonth ? 'selected' : ''}>${mesLabelFull(p.month)}</option>`).join('');
+    const filterHtml = `<select class="input" id="fluxo-month-sel" style="width:auto;min-width:160px">
+      <option value="">Todos os meses</option>${monthOptions}</select>`;
+
     $('#content').innerHTML = pageHeader('Fluxo de Caixa Projetado', 'Projecao de entradas, saidas e saldo',
-      [12, 24, 36].map(n => `<button class="btn ${n == count ? 'btn-primary' : 'btn-ghost'}" data-n="${n}">${n} meses</button>`).join('')) + `
+      periodoButtons + filterHtml) + `
       <div class="card p-5 mb-5"><canvas id="chart-flux" height="90"></canvas></div>
       <div class="card overflow-hidden">
-        <table><thead><tr><th>Mes</th><th>Entradas</th><th>Saidas</th><th>Faturas</th><th>Saldo mes</th><th>Saldo acumulado</th></tr></thead>
-        <tbody>${proj.map(p => `<tr class="${p.risk ? 'bg-bad/5' : ''}">
-          <td><b>${mesLabel(p.month)}</b></td><td class="text-good">${brl(p.income)}</td>
+        <table><thead><tr><th>Mes</th><th>Entradas</th><th>Saidas</th><th>Faturas</th><th>Saldo mes</th><th>Saldo acumulado</th><th></th></tr></thead>
+        <tbody>${proj.map(p => `<tr class="${p.risk ? 'bg-bad/5' : ''} ${p.month === selectedMonth ? 'ring-2 ring-inset ring-accent/40' : ''}">
+          <td><b>${mesLabelFull(p.month)}</b></td><td class="text-good">${brl(p.income)}</td>
           <td class="text-bad">${brl(p.expense)}</td><td>${brl(p.cardsInvoice)}</td>
           <td class="${p.net >= 0 ? 'text-good' : 'text-bad'}">${brl(p.net)}</td>
           <td class="${p.balance >= 0 ? 'text-good' : 'text-bad'}"><b>${brl(p.balance)}</b> ${p.risk ? '<span class="badge bg-bad/20 text-bad ml-1">risco</span>' : ''}</td>
+          <td><button class="chip" data-fluxo-detail="${p.month}">Detalhar</button></td>
         </tr>`).join('')}</tbody></table>
-      </div>`;
-    const labels = proj.map(p => mesLabel(p.month));
+      </div>
+      <div id="fluxo-detail-panel"></div>`;
+
+    const labels = proj.map(p => mesLabelFull(p.month));
     makeChart('chart-flux', 'line', labels, [
       { label: 'Saldo acumulado', data: proj.map(p => p.balance), borderColor: '#B9502C', backgroundColor: 'rgba(185,80,44,.12)', fill: true, tension: .3 },
       { label: 'Entradas', data: proj.map(p => p.income), borderColor: '#2F7A55', tension: .3 },
       { label: 'Saidas', data: proj.map(p => p.expense), borderColor: '#B23A2E', tension: .3 },
     ]);
-    document.querySelectorAll('[data-n]').forEach(b => b.addEventListener('click', () => PAGES.fluxo(+b.dataset.n)));
+
+    document.querySelectorAll('[data-n]').forEach(b => b.addEventListener('click', () => PAGES.fluxo(+b.dataset.n, selectedMonth)));
+
+    // Filtro de mes: ao selecionar, rola ate a linha e abre o detalhe
+    const sel = $('#fluxo-month-sel');
+    if (sel) sel.addEventListener('change', () => {
+      const m = sel.value;
+      if (m) {
+        PAGES.fluxo(count, m);
+      } else {
+        PAGES.fluxo(count, null);
+      }
+    });
+
+    // Botao Detalhar: busca os lancamentos do mes via calendario e exibe painel
+    document.querySelectorAll('[data-fluxo-detail]').forEach(b => b.addEventListener('click', async () => {
+      const month = b.dataset.fluxoDetail;
+      const panel = $('#fluxo-detail-panel');
+      if (!panel) return;
+      panel.innerHTML = `<div class="card p-5 mt-5"><p class="text-muted text-sm">Carregando...</p></div>`;
+      try {
+        const data = await api('GET', '/calendar?month=' + month);
+        const [y2, m2] = month.split('-').map(Number);
+        const labelM = new Date(y2, m2 - 1, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+        const income = data.events.filter(e => e.type === 'income');
+        const expense = data.events.filter(e => e.type === 'expense');
+        const totIn = income.reduce((s, e) => s + e.amount, 0);
+        const totOut = expense.reduce((s, e) => s + e.amount, 0);
+        const makeRows = evs => evs.length
+          ? evs.map(e => `<tr><td>Dia ${e.day}</td><td>${esc(e.label)}</td><td><span class="chip">${esc(e.kind)}</span></td><td class="${e.type === 'income' ? 'text-good' : 'text-bad'}">${e.type === 'income' ? '+' : '-'}${brl(e.amount)}</td></tr>`).join('')
+          : `<tr><td colspan="4" class="text-center text-muted py-4">Nenhum lancamento.</td></tr>`;
+        panel.innerHTML = `<div class="card p-5 mt-5">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="font-semibold">Detalhamento: ${labelM}</h3>
+            <button class="chip" id="fluxo-detail-close">Fechar</button>
+          </div>
+          <div class="grid grid-cols-3 gap-3 mb-5 text-sm">
+            <div class="card p-3 text-center"><div class="text-muted text-xs mb-1">Entradas</div><b class="text-good">${brl(totIn)}</b></div>
+            <div class="card p-3 text-center"><div class="text-muted text-xs mb-1">Saidas</div><b class="text-bad">${brl(totOut)}</b></div>
+            <div class="card p-3 text-center"><div class="text-muted text-xs mb-1">Saldo do mes</div><b class="${totIn - totOut >= 0 ? 'text-good' : 'text-bad'}">${brl(totIn - totOut)}</b></div>
+          </div>
+          ${income.length ? `<h4 class="font-semibold text-good mb-2">Entradas</h4>
+          <div class="overflow-auto mb-4"><table><thead><tr><th>Dia</th><th>Descricao</th><th>Tipo</th><th>Valor</th></tr></thead><tbody>${makeRows(income)}</tbody></table></div>` : ''}
+          ${expense.length ? `<h4 class="font-semibold text-bad mb-2">Saidas</h4>
+          <div class="overflow-auto"><table><thead><tr><th>Dia</th><th>Descricao</th><th>Tipo</th><th>Valor</th></tr></thead><tbody>${makeRows(expense)}</tbody></table></div>` : ''}
+        </div>`;
+        panel.scrollIntoView({ behavior: 'smooth' });
+        $('#fluxo-detail-close').addEventListener('click', () => { panel.innerHTML = ''; });
+      } catch(e) { panel.innerHTML = `<div class="card p-5 mt-5 text-bad">Erro ao carregar detalhes.</div>`; }
+    }));
+
+    // Se ha mes selecionado, abre automaticamente o detalhe
+    if (selectedMonth) {
+      const btn = document.querySelector(`[data-fluxo-detail="${selectedMonth}"]`);
+      if (btn) btn.click();
+    }
   };
 
   // ---- Recorrentes ----
