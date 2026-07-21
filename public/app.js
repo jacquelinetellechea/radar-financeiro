@@ -828,27 +828,94 @@
   }
 
   // ---- Valores a Receber ----
-  PAGES.receber = async function () {
+  PAGES.receber = async function (expandedPerson) {
     const items = await api('GET', '/receivables');
     const totalPend = items.reduce((s, l) => s + l.pending, 0);
     const totalRec = items.reduce((s, l) => s + l.received, 0);
     const totalOver = items.reduce((s, l) => s + l.overdue, 0);
+
+    // Mes atual para calcular "a receber este mes"
+    const nowMonth = new Date().toISOString().slice(0, 7);
+    const totalMes = items.reduce((s, l) => {
+      // soma parcelas com vencimento no mes atual
+      if (l.nextDue && l.nextDue.slice(0, 7) === nowMonth && l.pending > 0) return s + (l.monthlyAmount || l.pending);
+      return s;
+    }, 0);
+
+    // Agrupa por pessoa
+    const byPerson = {};
+    items.forEach(l => {
+      const p = l.person || 'Sem nome';
+      if (!byPerson[p]) byPerson[p] = { person: p, items: [], total: 0, received: 0, pending: 0, overdue: 0, thisMes: 0 };
+      byPerson[p].items.push(l);
+      byPerson[p].total += l.total;
+      byPerson[p].received += l.received;
+      byPerson[p].pending += l.pending;
+      byPerson[p].overdue += l.overdue;
+      // valor a receber este mes desta pessoa
+      if (l.nextDue && l.nextDue.slice(0, 7) === nowMonth && l.pending > 0)
+        byPerson[p].thisMes += (l.monthlyAmount || 0);
+    });
+    const groups = Object.values(byPerson).sort((a, b) => b.pending - a.pending);
+
+    const mesLabel = new Date(Number(nowMonth.slice(0, 4)), Number(nowMonth.slice(5, 7)) - 1, 1)
+      .toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+
+    let rowsHtml = '';
+    if (!groups.length) {
+      rowsHtml = `<tr><td colspan="7" class="text-center text-muted py-8">Nenhum valor a receber.</td></tr>`;
+    } else {
+      groups.forEach(g => {
+        const isExpanded = expandedPerson === g.person;
+        const statusHtml = g.overdue > 0
+          ? '<span class="badge bg-bad/20 text-bad">Atrasado</span>'
+          : g.pending === 0 ? '<span class="badge bg-good/20 text-good">Quitado</span>'
+          : '<span class="badge bg-panel2 text-muted">Em dia</span>';
+        rowsHtml += `<tr class="cursor-pointer hover:bg-panel2/60" data-expand-person="${esc(g.person)}">
+          <td><b>${esc(g.person)}</b> <span class="text-xs text-muted">(${g.items.length} item${g.items.length > 1 ? 's' : ''})</span></td>
+          <td class="text-warn">${brl(g.pending)}</td>
+          <td class="text-good">${brl(g.received)}</td>
+          <td class="${g.thisMes > 0 ? 'text-accent font-semibold' : 'text-muted'}">${g.thisMes > 0 ? brl(g.thisMes) : '\u2014'}</td>
+          <td class="text-bad">${g.overdue > 0 ? brl(g.overdue) : '\u2014'}</td>
+          <td>${statusHtml}</td>
+          <td class="text-right text-muted text-xs">${isExpanded ? '\u25b2 Recolher' : '\u25bc Expandir'}</td>
+        </tr>`;
+        if (isExpanded) {
+          g.items.forEach(l => {
+            rowsHtml += `<tr class="bg-panel2/40 text-sm">
+              <td class="pl-8 text-muted">${esc(l.description)}</td>
+              <td class="text-warn">${brl(l.pending)}</td>
+              <td class="text-good">${brl(l.received)}</td>
+              <td class="text-muted">\u2014</td>
+              <td class="text-bad">${l.overdue > 0 ? brl(l.overdue) : '\u2014'}</td>
+              <td>${l.nextDue ? l.nextDue.split('-').reverse().join('/') : '\u2014'}</td>
+              <td><span class="chip text-xs">${l.source === 'installment' ? 'Cartao/parcela' : 'Emprestimo'}</span></td>
+            </tr>`;
+          });
+        }
+      });
+    }
+
     $('#content').innerHTML = pageHeader('Valores a Receber', 'Emprestimos e reembolsos de compras (parte de terceiros)') + `
-      <div class="grid grid-cols-3 gap-4 mb-6">
+      <div class="grid grid-cols-4 gap-4 mb-6">
         ${statCard('Total pendente', brl(totalPend), null, 'text-warn')}
         ${statCard('Ja recebido', brl(totalRec), null, 'text-good')}
         ${statCard('Em atraso', brl(totalOver), null, 'text-bad')}
+        ${statCard('A receber em ' + mesLabel, totalMes > 0 ? brl(totalMes) : '\u2014', null, 'text-accent')}
       </div>
       <div class="card overflow-hidden">
-        <table><thead><tr><th>Pessoa</th><th>Descricao</th><th>Origem</th><th>Total</th><th>Recebido</th><th>Pendente</th><th>Proximo venc.</th><th>Status</th></tr></thead>
-        <tbody>${items.length ? items.map(l => `<tr>
-          <td><b>${esc(l.person)}</b></td><td>${esc(l.description)}</td>
-          <td><span class="chip">${l.source === 'installment' ? 'Cartao/parcela' : 'Emprestimo'}</span></td>
-          <td>${brl(l.total)}</td><td class="text-good">${brl(l.received)}</td><td class="text-warn">${brl(l.pending)}</td>
-          <td>${l.nextDue ? l.nextDue.split('-').reverse().join('/') : '—'}</td>
-          <td>${l.overdue > 0 ? '<span class="badge bg-bad/20 text-bad">Atrasado</span>' : l.pending === 0 ? '<span class="badge bg-good/20 text-good">Quitado</span>' : '<span class="badge bg-panel2 text-muted">Em dia</span>'}</td>
-        </tr>`).join('') : `<tr><td colspan="8" class="text-center text-muted py-8">Nenhum valor a receber.</td></tr>`}</tbody></table>
+        <table><thead><tr>
+          <th>Pessoa</th><th>Pendente</th><th>Recebido</th><th>Este mes</th><th>Em atraso</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody></table>
       </div>`;
+
+    document.querySelectorAll('[data-expand-person]').forEach(row => {
+      row.addEventListener('click', () => {
+        const p = row.dataset.expandPerson;
+        PAGES.receber(expandedPerson === p ? null : p);
+      });
+    });
   };
 
   // ---- Calendario ----
