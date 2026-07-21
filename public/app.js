@@ -578,7 +578,8 @@
     const months = Array.from(monthSet).sort().reverse();
 
     const nowMonth = new Date().toISOString().slice(0, 7);
-    const activeMonth = selectedMonth || (months.includes(nowMonth) ? nowMonth : months[0]);
+    // Garante que activeMonth sempre tenha valor (mes atual como fallback)
+    const activeMonth = selectedMonth || (months.includes(nowMonth) ? nowMonth : months[0]) || nowMonth;
 
     // Parcelas do mes selecionado
     const monthItems = [];
