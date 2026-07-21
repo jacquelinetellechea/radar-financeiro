@@ -573,7 +573,8 @@
 
   // ---- Parcelamentos ----
   PAGES.parcelas = async function () {
-    const [insts, cards] = await Promise.all([api('GET', '/installments'), api('GET', '/cards')]);
+    const [allInsts, cards] = await Promise.all([api('GET', '/installments'), api('GET', '/cards')]);
+    const insts = allInsts.filter(i => i.numInstallments > 1);
     $('#content').innerHTML = pageHeader('Parcelamentos Inteligentes', 'Cadastre uma compra e o sistema gera todas as parcelas futuras',
       `<button class="btn btn-primary" id="add">+ Nova compra parcelada</button>`) + `
       <div class="card overflow-hidden">
