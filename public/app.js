@@ -566,9 +566,30 @@
   async function cardHistory(id) {
     const all = await api('GET', '/installments');
     const items = all.filter(i => i.cardId === id);
-    openModal('Historico de compras', items.length ? `<div class="max-h-96 overflow-auto"><table><thead><tr><th>Descricao</th><th>Categoria</th><th>Total</th><th>Parcelas</th></tr></thead><tbody>
-      ${items.map(i => `<tr><td>${esc(i.description)}</td><td><span class="chip">${esc(i.category)}</span></td><td>${brl(i.totalAmount)}</td><td>${i.numInstallments}x</td></tr>`).join('')}
+    openModal('Historico de compras', items.length ? `<div class="max-h-96 overflow-auto"><table><thead><tr><th>Descricao</th><th>Categoria</th><th>Total</th><th>Parcelas</th><th></th></tr></thead><tbody>
+      ${items.map(i => `<tr>
+        <td>${esc(i.description)}</td>
+        <td><span class="chip">${esc(i.category)}</span></td>
+        <td>${brl(i.totalAmount)}</td>
+        <td>${i.numInstallments}x</td>
+        <td class="text-right whitespace-nowrap">
+          <button class="chip" data-hist-edit="${i.id}">Editar</button>
+          <button class="chip" data-hist-del="${i.id}">🗑️</button>
+        </td>
+      </tr>`).join('')}
     </tbody></table></div>` : '<p class="text-muted">Sem compras neste cartao.</p>', { wide: true });
+    document.querySelectorAll('[data-hist-edit]').forEach(b => b.addEventListener('click', () => {
+      closeModal();
+      const item = items.find(i => i.id === b.dataset.histEdit);
+      if (item) instDetail(item);
+    }));
+    document.querySelectorAll('[data-hist-del]').forEach(b => b.addEventListener('click', () => {
+      confirmModal('Excluir esta compra e suas parcelas?', async () => {
+        await api('DELETE', '/installments/' + b.dataset.histDel);
+        toast('Excluido', 'ok');
+        closeModal();
+      });
+    }));
   }
 
   // ---- Parcelamentos ----
