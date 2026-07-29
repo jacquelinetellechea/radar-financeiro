@@ -1208,7 +1208,19 @@
   // ---- Configuracoes ----
   PAGES.config = async function () {
     const s = await api('GET', '/settings');
-    $('#content').innerHTML = pageHeader('Configuracoes', 'Saldo inicial, seguranca e backup') + `
+    if (!state.configTab) state.configTab = 'geral';
+    const cfgTabs = [['geral', 'Geral'], ['perfis', 'Perfis de Eventos']];
+    const tabsHtml = cfgTabs.map(([k, l]) => `<button class="btn ${k === state.configTab ? 'btn-primary' : 'btn-ghost'}" data-cfg-tab="${k}">${l}</button>`).join('');
+    $('#content').innerHTML = pageHeader('Configuracoes', 'Saldo inicial, seguranca, backup e perfis de eventos')
+      + `<div class="flex gap-1 flex-wrap mb-6">${tabsHtml}</div><div id="cfg-sub"></div>`;
+    document.querySelectorAll('[data-cfg-tab]').forEach(b => b.addEventListener('click', () => { state.configTab = b.dataset.cfgTab; renderCfgSub(s); }));
+    renderCfgSub(s);
+  };
+
+  async function renderCfgSub(s) {
+    const box = $('#cfg-sub'); if (!box) return;
+    if (state.configTab === 'geral') {
+    box.innerHTML = `
       <div class="grid lg:grid-cols-2 gap-6">
         <div class="card p-6">
           <h3 class="font-semibold mb-4">Saldo atual</h3>
@@ -1254,6 +1266,152 @@
         toast('Backup importado', 'ok'); go('dashboard');
       });
     });
+    return;
+    } // end geral
+
+    // ---- Aba: Perfis de Eventos ----
+    let profiles = [];
+    try { profiles = await api('GET', '/event-profiles'); } catch (_) {}
+    const PLAN_SECTIONS = [
+      { key: 'food', label: 'Alimentacao' }, { key: 'drinks', label: 'Bebidas' },
+      { key: 'decor', label: 'Decoracao' }, { key: 'materials', label: 'Materiais' },
+      { key: 'team', label: 'Equipe' }, { key: 'checklist', label: 'Checklist' }, { key: 'schedule', label: 'Cronograma' }
+    ];
+    if (!state.profileId && profiles.length) state.profileId = profiles[0].id;
+    const selProf = profiles.find(p => p.id === state.profileId);
+    const profOpts = profiles.map(p => `<option value="${p.id}" ${p.id === state.profileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+
+    let itemsHtml = '';
+    if (selProf) {
+      if (!state.profileSection) state.profileSection = 'food';
+      const secTabs = PLAN_SECTIONS.map(s => `<button class="chip ${s.key === state.profileSection ? 'chip-active' : ''}" data-psec="${s.key}">${s.label}</button>`).join('');
+      const secKey = state.profileSection;
+      const items = (selProf[secKey] || []);
+      const isTeam = secKey === 'team';
+      const isSched = secKey === 'schedule';
+      const isCk = secKey === 'checklist';
+      const rows = items.map(i => {
+        if (isSched || isCk) return `<tr><td>${esc(i.text || i.name || '')}</td><td>${esc(i.category || '')}</td><td>${isSched ? (i.daysBeforeEvent != null ? i.daysBeforeEvent + 'd antes' : '') : ''}</td><td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td></tr>`;
+        if (isTeam) return `<tr><td>${esc(i.name)}</td><td>${esc(i.unit || '')}</td><td>${i.qtyPerAdult != null ? i.qtyPerAdult + '/adulto' : ''}</td><td>${i.qtyPerChild != null ? i.qtyPerChild + '/crianca' : ''}</td><td>${brl(i.defaultValue)}</td><td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td></tr>`;
+        return `<tr><td>${esc(i.name)}</td><td>${esc(i.unit || '')}</td><td>${i.qtyPerAdult != null ? i.qtyPerAdult + '/adulto' : ''}</td><td>${i.qtyPerChild != null ? i.qtyPerChild + '/crianca' : ''}</td><td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td></tr>`;
+      }).join('') || `<tr><td colspan="6" class="text-muted text-center py-4">Nenhum item. Adicione o primeiro.</td></tr>`;
+      const thead = (isSched || isCk)
+        ? '<tr><th>Texto</th><th>Categoria</th><th>Dias antes</th><th></th></tr>'
+        : isTeam ? '<tr><th>Funcao</th><th>Unidade</th><th>Qtd/adulto</th><th>Qtd/crianca</th><th>Valor</th><th></th></tr>'
+        : '<tr><th>Item</th><th>Unidade</th><th>Qtd/adulto</th><th>Qtd/crianca</th><th></th></tr>';
+      itemsHtml = `
+        <div class="card overflow-hidden mt-4">
+          <div class="flex justify-between items-center p-4 flex-wrap gap-3">
+            <div class="flex gap-2 flex-wrap">${secTabs}</div>
+            <button class="btn btn-primary" id="pi-add">+ Item</button>
+          </div>
+          <table><thead>${thead}</thead><tbody>${rows}</tbody></table>
+        </div>`;
+    }
+
+    box.innerHTML = `
+      <div class="flex justify-between items-center mb-4 flex-wrap gap-3">
+        <div class="flex items-center gap-3 flex-wrap">
+          <h3 class="font-semibold">Perfis de Eventos</h3>
+          ${profOpts ? `<select class="input w-auto" id="prof-sel">${profOpts}</select>` : ''}
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-primary" id="prof-new">+ Novo perfil</button>
+          ${selProf ? `<button class="btn btn-ghost" id="prof-dup">Duplicar</button> <button class="btn btn-ghost" id="prof-edit">✏️ Editar</button> <button class="btn btn-ghost" id="prof-del">🗑️</button>` : ''}
+        </div>
+      </div>
+      ${!profiles.length ? '<div class="card p-8 text-center text-muted">Nenhum perfil ainda. Crie o primeiro para configurar itens de alimentacao, bebidas, decoracao, equipe e cronograma padrao para seus eventos.</div>' : ''}
+      ${selProf ? `<div class="card p-4"><p class="text-sm text-muted">${esc(selProf.description || 'Sem descricao')}</p></div>` : ''}
+      ${itemsHtml}`;
+
+    // Eventos da aba perfis
+    if ($('#prof-sel')) $('#prof-sel').addEventListener('change', e => { state.profileId = e.target.value; state.profileSection = 'food'; renderCfgSub(s); });
+    if ($('#prof-new')) $('#prof-new').addEventListener('click', () => formModal('Novo perfil de evento', [
+      { name: 'name', label: 'Nome do perfil', required: true, col: 'full', placeholder: 'Ex: Casamento 100 pessoas' },
+      { name: 'description', label: 'Descricao', col: 'full' }
+    ], async v => {
+      const p = await api('POST', '/event-profiles', v);
+      state.profileId = p.id; state.profileSection = 'food'; closeModal(); toast('Perfil criado', 'ok'); renderCfgSub(s);
+    }));
+    if ($('#prof-edit') && selProf) $('#prof-edit').addEventListener('click', () => formModal('Editar perfil', [
+      { name: 'name', label: 'Nome', required: true, col: 'full', value: selProf.name },
+      { name: 'description', label: 'Descricao', col: 'full', value: selProf.description || '' }
+    ], async v => { await api('PUT', '/event-profiles/' + selProf.id, v); closeModal(); toast('Salvo', 'ok'); renderCfgSub(s); }));
+    if ($('#prof-dup') && selProf) $('#prof-dup').addEventListener('click', async () => {
+      const p = await api('POST', '/event-profiles/' + selProf.id + '/duplicate', {});
+      state.profileId = p.id; toast('Perfil duplicado', 'ok'); renderCfgSub(s);
+    });
+    if ($('#prof-del') && selProf) $('#prof-del').addEventListener('click', () => confirmModal('Excluir perfil "' + selProf.name + '"?', async () => {
+      await api('DELETE', '/event-profiles/' + selProf.id);
+      state.profileId = null; toast('Excluido', 'ok'); renderCfgSub(s);
+    }));
+    document.querySelectorAll('[data-psec]').forEach(b => b.addEventListener('click', () => { state.profileSection = b.dataset.psec; renderCfgSub(s); }));
+
+    // Adicionar item ao perfil
+    if ($('#pi-add') && selProf) $('#pi-add').addEventListener('click', () => {
+      const secKey = state.profileSection;
+      const isSched = secKey === 'schedule'; const isCk = secKey === 'checklist'; const isTeam = secKey === 'team';
+      let fields;
+      if (isSched) fields = [
+        { name: 'text', label: 'Etapa', required: true, col: 'full' },
+        { name: 'category', label: 'Categoria' },
+        { name: 'daysBeforeEvent', label: 'Dias antes do evento', type: 'number', min: 0, value: 30 }
+      ];
+      else if (isCk) fields = [
+        { name: 'text', label: 'Tarefa', required: true, col: 'full' },
+        { name: 'category', label: 'Categoria' },
+        { name: 'daysBeforeEvent', label: 'Dias antes do evento', type: 'number', min: 0, value: 30 }
+      ];
+      else if (isTeam) fields = [
+        { name: 'name', label: 'Funcao', required: true, col: 'full' },
+        { name: 'unit', label: 'Unidade', value: 'pessoa' },
+        { name: 'qtyPerAdult', label: 'Qtd por adulto (ex: 0.1 = 1 a cada 10)', type: 'number', step: '0.001', value: 0 },
+        { name: 'qtyPerChild', label: 'Qtd por crianca', type: 'number', step: '0.001', value: 0 },
+        { name: 'defaultValue', label: 'Valor por pessoa (R$)', type: 'number', step: '0.01', value: 0 }
+      ];
+      else fields = [
+        { name: 'name', label: 'Item', required: true, col: 'full' },
+        { name: 'unit', label: 'Unidade (ex: kg, litro, unidade)', value: 'unidade' },
+        { name: 'qtyPerAdult', label: 'Qtd por adulto', type: 'number', step: '0.001', value: 0 },
+        { name: 'qtyPerChild', label: 'Qtd por crianca', type: 'number', step: '0.001', value: 0 }
+      ];
+      formModal('Adicionar item em ' + PLAN_SECTIONS.find(x => x.key === secKey).label, fields, async v => {
+        await api('POST', '/event-profiles/' + selProf.id + '/items', { section: secKey, item: Object.assign({ id: genId() }, v, { qtyPerAdult: Number(v.qtyPerAdult) || 0, qtyPerChild: Number(v.qtyPerChild) || 0, defaultValue: Number(v.defaultValue) || 0, daysBeforeEvent: Number(v.daysBeforeEvent) || 0 }) });
+        closeModal(); toast('Item adicionado', 'ok'); renderCfgSub(s);
+      });
+    });
+    document.querySelectorAll('[data-pi-del]').forEach(b => b.addEventListener('click', async () => {
+      await api('DELETE', '/event-profiles/' + selProf.id + '/items/' + b.dataset.piDel + '?section=' + state.profileSection);
+      toast('Removido', 'ok'); renderCfgSub(s);
+    }));
+    document.querySelectorAll('[data-pi-edit]').forEach(b => b.addEventListener('click', async () => {
+      const secKey = state.profileSection;
+      const item = (selProf[secKey] || []).find(x => x.id === b.dataset.piEdit); if (!item) return;
+      const isSched = secKey === 'schedule'; const isCk = secKey === 'checklist'; const isTeam = secKey === 'team';
+      let fields;
+      if (isSched || isCk) fields = [
+        { name: 'text', label: 'Texto', required: true, col: 'full', value: item.text || item.name || '' },
+        { name: 'category', label: 'Categoria', value: item.category || '' },
+        { name: 'daysBeforeEvent', label: 'Dias antes do evento', type: 'number', min: 0, value: item.daysBeforeEvent || 0 }
+      ];
+      else if (isTeam) fields = [
+        { name: 'name', label: 'Funcao', required: true, col: 'full', value: item.name },
+        { name: 'unit', label: 'Unidade', value: item.unit || 'pessoa' },
+        { name: 'qtyPerAdult', label: 'Qtd por adulto', type: 'number', step: '0.001', value: item.qtyPerAdult || 0 },
+        { name: 'qtyPerChild', label: 'Qtd por crianca', type: 'number', step: '0.001', value: item.qtyPerChild || 0 },
+        { name: 'defaultValue', label: 'Valor por pessoa (R$)', type: 'number', step: '0.01', value: item.defaultValue || 0 }
+      ];
+      else fields = [
+        { name: 'name', label: 'Item', required: true, col: 'full', value: item.name },
+        { name: 'unit', label: 'Unidade', value: item.unit || 'unidade' },
+        { name: 'qtyPerAdult', label: 'Qtd por adulto', type: 'number', step: '0.001', value: item.qtyPerAdult || 0 },
+        { name: 'qtyPerChild', label: 'Qtd por crianca', type: 'number', step: '0.001', value: item.qtyPerChild || 0 }
+      ];
+      formModal('Editar item', fields, async v => {
+        await api('PUT', '/event-profiles/' + selProf.id + '/items/' + item.id, { section: secKey, item: Object.assign({}, item, v, { qtyPerAdult: Number(v.qtyPerAdult) || 0, qtyPerChild: Number(v.qtyPerChild) || 0, defaultValue: Number(v.defaultValue) || 0, daysBeforeEvent: Number(v.daysBeforeEvent) || 0 }) });
+        closeModal(); toast('Salvo', 'ok'); renderCfgSub(s);
+      });
+    }));
   };
 
   function emptyState(msg) { return `<div class="card p-10 text-center text-muted col-span-full">${esc(msg)}</div>`; }
@@ -1555,7 +1713,7 @@
   }
 
   // ================= EVENTOS =================
-  const EV_TABS = [['info', 'Informacoes'], ['fornecedores', 'Fornecedores'], ['convidados', 'Convidados'], ['checklist', 'Checklist'], ['ideias', 'Ideias'], ['honorarios', 'Honorarios']];
+  const EV_TABS = [['info', 'Informacoes'], ['fornecedores', 'Fornecedores'], ['convidados', 'Convidados'], ['checklist', 'Checklist'], ['cronograma', 'Cronograma'], ['alimentacao', 'Alimentacao'], ['bebidas', 'Bebidas'], ['decoracao', 'Decoracao'], ['materiais', 'Materiais'], ['equipe', 'Equipe'], ['ideias', 'Ideias'], ['honorarios', 'Honorarios']];
   const EV_CATS = ['Buffet', 'Local', 'Decoracao', 'Fotografia', 'Musica/DJ', 'Bolo/Doces', 'Convites', 'Vestuario/Beleza', 'Transporte', 'Outros'];
 
   async function saveEv() { try { await api('PUT', '/events/' + state.ev.id, state.ev); go('eventos'); } catch (e) { toast(e.message, 'err'); } }
@@ -1706,6 +1864,12 @@
     else if (T === 'fornecedores') box.innerHTML = subEvVendors(e);
     else if (T === 'convidados') box.innerHTML = subEvGuests(e, ce);
     else if (T === 'checklist') box.innerHTML = subEvCheck(e);
+    else if (T === 'cronograma') box.innerHTML = subEvSchedule(e);
+    else if (T === 'alimentacao') { subEvPlan(e, ce, 'planFood', 'Alimentacao').then(h => { box.innerHTML = h; bindEvSub(ce); }); return; }
+    else if (T === 'bebidas') { subEvPlan(e, ce, 'planDrinks', 'Bebidas').then(h => { box.innerHTML = h; bindEvSub(ce); }); return; }
+    else if (T === 'decoracao') { subEvPlan(e, ce, 'planDecor', 'Decoracao').then(h => { box.innerHTML = h; bindEvSub(ce); }); return; }
+    else if (T === 'materiais') { subEvPlan(e, ce, 'planMaterials', 'Materiais').then(h => { box.innerHTML = h; bindEvSub(ce); }); return; }
+    else if (T === 'equipe') { subEvPlan(e, ce, 'planTeam', 'Equipe').then(h => { box.innerHTML = h; bindEvSub(ce); }); return; }
     else if (T === 'ideias') box.innerHTML = subEvIdeas(e);
     else if (T === 'honorarios') box.innerHTML = subEvFee(e, ce);
     bindEvSub(ce);
@@ -1820,6 +1984,84 @@
     </div>`;
   }
 
+  // ----- Cronograma -----
+  function subEvSchedule(e) {
+    const today = new Date().toISOString().slice(0, 10);
+    const col = { 'Pendente': 'bg-panel2 text-muted', 'Em andamento': 'bg-warn/20 text-warn', 'Concluido': 'bg-good/20 text-good' };
+    const rows = (e.schedule || []).map(i => {
+      const late = !i.done && i.dueDate && i.dueDate < today;
+      let dueTxt = '';
+      if (i.dueDate) dueTxt = dbr(i.dueDate);
+      else if (i.daysBeforeEvent && e.date) {
+        const d = new Date(e.date + 'T00:00:00');
+        d.setDate(d.getDate() - Number(i.daysBeforeEvent));
+        dueTxt = dbr(d.toISOString().slice(0, 10)) + ` <span class="text-xs text-muted">(${i.daysBeforeEvent}d antes)</span>`;
+      }
+      return `<tr class="${late ? 'bg-bad/5' : ''}">
+        <td>${esc(i.text)}</td>
+        <td><span class="chip">${esc(i.category || '-')}</span></td>
+        <td>${dueTxt || '—'}${late ? ' <span class="badge bg-bad/20 text-bad">atrasado</span>' : ''}</td>
+        <td><button class="badge ${col[i.status] || col.Pendente}" data-sched-tog="${i.id}">${esc(i.status || 'Pendente')}</button></td>
+        <td class="text-right whitespace-nowrap"><button class="chip" data-sched-edit="${i.id}">✏️</button> <button class="chip" data-sched-del="${i.id}">🗑️</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" class="text-muted text-center py-4">Nenhuma etapa no cronograma</td></tr>';
+    return `<div class="card overflow-hidden">
+      <div class="flex justify-between items-center p-4"><h3 class="font-semibold">Cronograma</h3><button class="btn btn-primary" id="sched-add">+ Etapa</button></div>
+      <table><thead><tr><th>Etapa</th><th>Categoria</th><th>Data prevista</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }
+
+  // ----- Planejamento (Alimentação, Bebidas, Decoração, Materiais, Equipe) -----
+  const PLAN_LABELS = { planFood: 'Alimentacao', planDrinks: 'Bebidas', planDecor: 'Decoracao', planMaterials: 'Materiais', planTeam: 'Equipe' };
+  const PLAN_UNIT_COL = { planFood: 'Qtd sugerida', planDrinks: 'Qtd sugerida', planDecor: 'Qtd sugerida', planMaterials: 'Qtd sugerida', planTeam: 'Qtd sugerida' };
+
+  async function subEvPlan(e, ce, planKey, label) {
+    // Busca perfis disponíveis
+    let profiles = [];
+    try { profiles = await api('GET', '/event-profiles'); } catch (_) {}
+    const items = e[planKey] || [];
+    const adults = ce.adults || 0;
+    const children = ce.kidsUnder10 || 0;
+    const total = adults + children;
+
+    const rows = items.map(i => {
+      const sugQty = i.suggestedTotal != null ? i.suggestedTotal : (i.suggestedQty != null ? i.suggestedQty : '');
+      return `<tr>
+        <td><b>${esc(i.name)}</b></td>
+        <td>${esc(i.unit || '')}</td>
+        <td class="text-muted">${sugQty !== '' ? sugQty : '—'}</td>
+        <td><input class="input" type="number" min="0" step="0.01" style="width:90px" data-plan-qty="${i.id}" value="${i.qty != null ? i.qty : (sugQty || 0)}"></td>
+        <td><input class="input" style="width:140px" data-plan-notes="${i.id}" value="${esc(i.notes || '')}" placeholder="Obs..."></td>
+        <td class="text-right whitespace-nowrap">
+          <button class="chip" data-plan-edit="${i.id}">✏️</button>
+          <button class="chip" data-plan-del="${i.id}">🗑️</button>
+        </td>
+      </tr>`;
+    }).join('') || `<tr><td colspan="6" class="text-muted text-center py-4">Nenhum item. Aplique um perfil ou adicione manualmente.</td></tr>`;
+
+    const profileOpts = profiles.filter(p => p.active).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    const guestInfo = total > 0 ? `<span class="text-sm text-muted ml-3">${adults} adultos + ${children} crianças = ${total} pessoas</span>` : '';
+
+    return `<div class="card overflow-hidden">
+      <div class="flex justify-between items-center p-4 flex-wrap gap-3">
+        <div class="flex items-center gap-3 flex-wrap">
+          <h3 class="font-semibold">${label}</h3>
+          ${guestInfo}
+        </div>
+        <div class="flex gap-2 flex-wrap">
+          ${profileOpts ? `<select class="input" id="plan-profile-sel" style="min-width:160px"><option value="">Aplicar perfil...</option>${profileOpts}</select>
+          <button class="btn btn-ghost" id="plan-apply-profile">Calcular</button>` : ''}
+          <button class="btn btn-primary" id="plan-add-item" data-plan-key="${planKey}">+ Item</button>
+          <button class="btn btn-ghost" id="plan-save-all" data-plan-key="${planKey}">Salvar</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Item</th><th>Unidade</th><th>Sugerido</th><th>Quantidade</th><th>Observacoes</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
   function subEvIdeas(e) {
     const cards = (e.ideas || []).map(i => {
       let inner = '';
@@ -1917,6 +2159,101 @@
       { name: 'affectCashflow', label: 'Lancar no Fluxo de Caixa?', type: 'select', options: [{ value: '', label: 'Nao' }, { value: '1', label: 'Sim, como receita' }] }
     ], async v => { await api('POST', '/events/' + e.id + '/receive', { amount: v.amount, date: v.date, note: v.note, affectCashflow: !!v.affectCashflow }); closeModal(); toast('Recebimento registrado', 'ok'); go('eventos'); }));
     document.querySelectorAll('[data-rdel]').forEach(b => b.addEventListener('click', () => { e.fee.receipts = e.fee.receipts.filter(x => x.id !== b.dataset.rdel); saveEv(); }));
+    // Cronograma
+    const schedStatus = { 'Pendente': 'Em andamento', 'Em andamento': 'Concluido', 'Concluido': 'Pendente' };
+    if ($('#sched-add')) $('#sched-add').addEventListener('click', () => formModal('Nova etapa do cronograma', [
+      { name: 'text', label: 'Etapa', required: true, col: 'full', placeholder: 'Ex: Contratar local' },
+      { name: 'category', label: 'Categoria', placeholder: 'Ex: Infraestrutura, Fornecedores...' },
+      { name: 'daysBeforeEvent', label: 'Dias antes do evento (0 = no dia)', type: 'number', min: 0, value: 30 },
+      { name: 'dueDate', label: 'Ou data fixa (opcional)', type: 'date' }
+    ], async v => {
+      (e.schedule = e.schedule || []).push({ id: genId(), text: v.text, category: v.category || '', daysBeforeEvent: Number(v.daysBeforeEvent) || 0, dueDate: v.dueDate || '', status: 'Pendente', done: false });
+      closeModal(); saveEv();
+    }));
+    document.querySelectorAll('[data-sched-tog]').forEach(b => b.addEventListener('click', () => {
+      const i = (e.schedule || []).find(x => x.id === b.dataset.schedTog); if (!i) return;
+      i.status = schedStatus[i.status || 'Pendente']; saveEv();
+    }));
+    document.querySelectorAll('[data-sched-edit]').forEach(b => b.addEventListener('click', () => {
+      const i = (e.schedule || []).find(x => x.id === b.dataset.schedEdit); if (!i) return;
+      formModal('Editar etapa', [
+        { name: 'text', label: 'Etapa', required: true, col: 'full', value: i.text },
+        { name: 'category', label: 'Categoria', value: i.category },
+        { name: 'daysBeforeEvent', label: 'Dias antes do evento', type: 'number', min: 0, value: i.daysBeforeEvent || 0 },
+        { name: 'dueDate', label: 'Data fixa (opcional)', type: 'date', value: i.dueDate || '' }
+      ], async v => { Object.assign(i, { text: v.text, category: v.category || '', daysBeforeEvent: Number(v.daysBeforeEvent) || 0, dueDate: v.dueDate || '' }); closeModal(); saveEv(); });
+    }));
+    document.querySelectorAll('[data-sched-del]').forEach(b => b.addEventListener('click', () => { e.schedule = (e.schedule || []).filter(x => x.id !== b.dataset.schedDel); saveEv(); }));
+
+    // Planejamento (Alimentacao, Bebidas, Decoracao, Materiais, Equipe)
+    const planKey = { alimentacao: 'planFood', bebidas: 'planDrinks', decoracao: 'planDecor', materiais: 'planMaterials', equipe: 'planTeam' }[state.evTab];
+    if (planKey) {
+      // Salvar todos os itens do plano
+      if ($('#plan-save-all')) $('#plan-save-all').addEventListener('click', () => {
+        const items = e[planKey] || [];
+        items.forEach(i => {
+          const qEl = document.querySelector(`[data-plan-qty="${i.id}"]`);
+          const nEl = document.querySelector(`[data-plan-notes="${i.id}"]`);
+          if (qEl) i.qty = Number(qEl.value) || 0;
+          if (nEl) i.notes = nEl.value || '';
+        });
+        toast('Salvo', 'ok'); saveEv();
+      });
+      // Aplicar perfil
+      if ($('#plan-apply-profile')) $('#plan-apply-profile').addEventListener('click', async () => {
+        const sel = $('#plan-profile-sel'); if (!sel || !sel.value) { toast('Selecione um perfil', 'err'); return; }
+        try {
+          const result = await api('POST', '/events/' + e.id + '/apply-profile', { profileId: sel.value });
+          state.ev = result.event;
+          toast('Perfil aplicado!', 'ok');
+          renderEvSub(result.computed);
+        } catch (err) { toast('Erro: ' + err.message, 'err'); }
+      });
+      // Adicionar item manualmente
+      if ($('#plan-add-item')) $('#plan-add-item').addEventListener('click', () => {
+        const isTeam = planKey === 'planTeam';
+        const fields = isTeam ? [
+          { name: 'name', label: 'Funcao', required: true, col: 'full' },
+          { name: 'qty', label: 'Quantidade', type: 'number', min: 0, value: 1 },
+          { name: 'defaultValue', label: 'Valor por pessoa (R$)', type: 'number', step: '0.01', value: 0 },
+          { name: 'notes', label: 'Observacoes', col: 'full' }
+        ] : [
+          { name: 'name', label: 'Item', required: true, col: 'full' },
+          { name: 'unit', label: 'Unidade (ex: unidade, kg, litro)', value: 'unidade' },
+          { name: 'qty', label: 'Quantidade', type: 'number', min: 0, step: '0.01', value: 0 },
+          { name: 'notes', label: 'Observacoes', col: 'full' }
+        ];
+        formModal('Adicionar item', fields, async v => {
+          (e[planKey] = e[planKey] || []).push({ id: genId(), name: v.name, unit: v.unit || '', qty: Number(v.qty) || 0, notes: v.notes || '', defaultValue: Number(v.defaultValue) || 0 });
+          closeModal(); saveEv();
+        });
+      });
+      // Editar item
+      document.querySelectorAll('[data-plan-edit]').forEach(b => b.addEventListener('click', () => {
+        const item = (e[planKey] || []).find(x => x.id === b.dataset.planEdit); if (!item) return;
+        const isTeam = planKey === 'planTeam';
+        const fields = isTeam ? [
+          { name: 'name', label: 'Funcao', required: true, col: 'full', value: item.name },
+          { name: 'qty', label: 'Quantidade', type: 'number', min: 0, value: item.qty || 0 },
+          { name: 'defaultValue', label: 'Valor por pessoa (R$)', type: 'number', step: '0.01', value: item.defaultValue || 0 },
+          { name: 'notes', label: 'Observacoes', col: 'full', value: item.notes || '' }
+        ] : [
+          { name: 'name', label: 'Item', required: true, col: 'full', value: item.name },
+          { name: 'unit', label: 'Unidade', value: item.unit || 'unidade' },
+          { name: 'qty', label: 'Quantidade', type: 'number', min: 0, step: '0.01', value: item.qty || 0 },
+          { name: 'notes', label: 'Observacoes', col: 'full', value: item.notes || '' }
+        ];
+        formModal('Editar item', fields, async v => {
+          Object.assign(item, { name: v.name, unit: v.unit || item.unit || '', qty: Number(v.qty) || 0, notes: v.notes || '', defaultValue: Number(v.defaultValue) || 0 });
+          closeModal(); saveEv();
+        });
+      }));
+      // Excluir item
+      document.querySelectorAll('[data-plan-del]').forEach(b => b.addEventListener('click', () => {
+        e[planKey] = (e[planKey] || []).filter(x => x.id !== b.dataset.planDel); saveEv();
+      }));
+    }
+
     // Ideias
     if ($('#idea-add')) $('#idea-add').addEventListener('click', () => formModal('Adicionar ideia', [
       { name: 'type', label: 'Tipo', type: 'select', options: [{ value: 'link', label: 'Link' }, { value: 'image', label: 'Foto (URL da imagem)' }, { value: 'note', label: 'Anotacao' }] },

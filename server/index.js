@@ -636,6 +636,195 @@ app.post('/api/import/commit', (req, res) => {
   ok(res, { created });
 });
 
+// ---------- Perfis Inteligentes de Eventos ----------
+const epmod = require('./event-profiles');
+
+// Garante que os perfis padrão existam na primeira execução
+function ensureDefaultProfiles() {
+  const d = store.getData();
+  if (!d.eventProfiles) d.eventProfiles = [];
+  if (!d.eventModels) d.eventModels = [];
+  if (d.eventProfiles.length === 0) {
+    d.eventProfiles = epmod.defaultProfiles();
+    store.scheduleBackup();
+  }
+}
+
+// Listar perfis
+app.get('/api/event-profiles', auth, (req, res) => {
+  ensureDefaultProfiles();
+  ok(res, store.getData().eventProfiles);
+});
+
+// Criar perfil
+app.post('/api/event-profiles', auth, (req, res) => {
+  ensureDefaultProfiles();
+  const d = store.getData();
+  const body = req.body || {};
+  const profile = Object.assign({
+    id: store.id(), name: 'Novo perfil', isDefault: false, active: true,
+    color: '#B9502C', icon: '🎉',
+    food: [], drinks: [], decor: [], materials: [], team: [],
+    checklist: [], schedule: []
+  }, body, { id: store.id(), createdAt: new Date().toISOString() });
+  d.eventProfiles.push(profile);
+  store.scheduleBackup();
+  ok(res, profile);
+});
+
+// Atualizar perfil
+app.put('/api/event-profiles/:id', auth, (req, res) => {
+  const d = store.getData();
+  const i = d.eventProfiles.findIndex(p => p.id === req.params.id);
+  if (i < 0) return bad(res, 'Perfil nao encontrado', 404);
+  d.eventProfiles[i] = Object.assign({}, d.eventProfiles[i], req.body || {}, { id: d.eventProfiles[i].id, createdAt: d.eventProfiles[i].createdAt });
+  store.scheduleBackup();
+  ok(res, d.eventProfiles[i]);
+});
+
+// Excluir perfil
+app.delete('/api/event-profiles/:id', auth, (req, res) => {
+  const d = store.getData();
+  d.eventProfiles = d.eventProfiles.filter(p => p.id !== req.params.id);
+  store.scheduleBackup();
+  ok(res, { success: true });
+});
+
+// Duplicar perfil
+app.post('/api/event-profiles/:id/duplicate', auth, (req, res) => {
+  const d = store.getData();
+  const src = d.eventProfiles.find(p => p.id === req.params.id);
+  if (!src) return bad(res, 'Perfil nao encontrado', 404);
+  const clone = JSON.parse(JSON.stringify(src));
+  clone.id = store.id();
+  clone.name = src.name + ' (cópia)';
+  clone.isDefault = false;
+  clone.createdAt = new Date().toISOString();
+  // Regenera IDs dos itens
+  ['food','drinks','decor','materials','team','checklist','schedule'].forEach(k => {
+    if (Array.isArray(clone[k])) clone[k].forEach(item => { item.id = store.id(); });
+  });
+  d.eventProfiles.push(clone);
+  store.scheduleBackup();
+  ok(res, clone);
+});
+
+// Calcular sugestões para um evento com base no perfil
+app.get('/api/event-profiles/:id/suggest', auth, (req, res) => {
+  const d = store.getData();
+  const profile = d.eventProfiles.find(p => p.id === req.params.id);
+  if (!profile) return bad(res, 'Perfil nao encontrado', 404);
+  const adults = Number(req.query.adults) || 0;
+  const children = Number(req.query.children) || 0;
+  const tables = Number(req.query.tables) || Math.ceil((adults + children) / 10) || 1;
+  ok(res, epmod.calcSuggestions(profile, adults, children, tables));
+});
+
+// ---------- Biblioteca de Modelos ----------
+app.get('/api/event-models', auth, (req, res) => {
+  const d = store.getData();
+  ok(res, d.eventModels || []);
+});
+
+// Salvar modelo a partir de um evento
+app.post('/api/event-models', auth, (req, res) => {
+  const d = store.getData();
+  if (!d.eventModels) d.eventModels = [];
+  const body = req.body || {};
+  const model = {
+    id: store.id(),
+    name: body.name || 'Modelo sem nome',
+    description: body.description || '',
+    profileId: body.profileId || null,
+    food: body.food || [],
+    drinks: body.drinks || [],
+    decor: body.decor || [],
+    materials: body.materials || [],
+    team: body.team || [],
+    checklist: body.checklist || [],
+    schedule: body.schedule || [],
+    createdAt: new Date().toISOString()
+  };
+  d.eventModels.push(model);
+  store.scheduleBackup();
+  ok(res, model);
+});
+
+// Atualizar modelo
+app.put('/api/event-models/:id', auth, (req, res) => {
+  const d = store.getData();
+  const i = (d.eventModels || []).findIndex(m => m.id === req.params.id);
+  if (i < 0) return bad(res, 'Modelo nao encontrado', 404);
+  d.eventModels[i] = Object.assign({}, d.eventModels[i], req.body || {}, { id: d.eventModels[i].id, createdAt: d.eventModels[i].createdAt });
+  store.scheduleBackup();
+  ok(res, d.eventModels[i]);
+});
+
+// Excluir modelo
+app.delete('/api/event-models/:id', auth, (req, res) => {
+  const d = store.getData();
+  d.eventModels = (d.eventModels || []).filter(m => m.id !== req.params.id);
+  store.scheduleBackup();
+  ok(res, { success: true });
+});
+
+// Aplicar modelo a um evento (preenche as seções do evento)
+app.post('/api/events/:id/apply-model', auth, (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  const { modelId } = req.body || {};
+  const model = (d.eventModels || []).find(m => m.id === modelId);
+  if (!model) return bad(res, 'Modelo nao encontrado', 404);
+  // Aplica os dados do modelo ao evento (sem sobrescrever campos base)
+  const newId = () => store.id();
+  if (model.food && model.food.length) e.planFood = model.food.map(i => Object.assign({}, i, { id: newId(), qty: 0, notes: i.notes || '' }));
+  if (model.drinks && model.drinks.length) e.planDrinks = model.drinks.map(i => Object.assign({}, i, { id: newId(), qty: 0, notes: i.notes || '' }));
+  if (model.decor && model.decor.length) e.planDecor = model.decor.map(i => Object.assign({}, i, { id: newId(), qty: 0, notes: i.notes || '' }));
+  if (model.materials && model.materials.length) e.planMaterials = model.materials.map(i => Object.assign({}, i, { id: newId(), qty: 0, notes: i.notes || '' }));
+  if (model.team && model.team.length) e.planTeam = model.team.map(i => Object.assign({}, i, { id: newId(), qty: 0, notes: i.notes || '' }));
+  if (model.checklist && model.checklist.length) {
+    const existing = e.checklist || [];
+    const toAdd = model.checklist.map(i => ({ id: newId(), text: i.text, category: i.category || '', daysBeforeEvent: i.daysBeforeEvent || 0, status: 'Pendente', dueDate: '' }));
+    e.checklist = [...existing, ...toAdd];
+  }
+  if (model.schedule && model.schedule.length) {
+    e.schedule = model.schedule.map(i => ({ id: newId(), text: i.text, category: i.category || '', daysBeforeEvent: i.daysBeforeEvent || 0, status: 'Pendente', dueDate: '', done: false }));
+  }
+  store.scheduleBackup();
+  ok(res, { event: e, computed: evmod.computeEvent(e) });
+});
+
+// Aplicar perfil a um evento (preenche com sugestões calculadas)
+app.post('/api/events/:id/apply-profile', auth, (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  const { profileId } = req.body || {};
+  const profile = (d.eventProfiles || []).find(p => p.id === profileId);
+  if (!profile) return bad(res, 'Perfil nao encontrado', 404);
+  const c = evmod.computeEvent(e);
+  const adults = c.adults || 0;
+  const children = c.kidsUnder10 || 0;
+  const tables = Math.ceil((adults + children) / 10) || 1;
+  const suggestions = epmod.calcSuggestions(profile, adults, children, tables);
+  const newId = () => store.id();
+  e.profileId = profileId;
+  e.planFood = suggestions.food.map(i => ({ id: newId(), name: i.name, unit: i.unit, perAdult: i.perAdult, perChild: i.perChild, suggestedTotal: i.suggestedTotal, qty: i.suggestedTotal, notes: i.notes || '' }));
+  e.planDrinks = suggestions.drinks.map(i => ({ id: newId(), name: i.name, unit: i.unit, perAdult: i.perAdult, perChild: i.perChild, suggestedTotal: i.suggestedTotal, qty: i.suggestedTotal, notes: i.notes || '' }));
+  e.planDecor = suggestions.decor.map(i => ({ id: newId(), name: i.name, unit: i.unit, formula: i.formula, formulaFactor: i.formulaFactor, suggestedQty: i.suggestedQty, qty: i.suggestedQty, notes: i.notes || '' }));
+  e.planMaterials = suggestions.materials.map(i => ({ id: newId(), name: i.name, unit: i.unit, perAdult: i.perAdult, perChild: i.perChild, suggestedTotal: i.suggestedTotal, qty: i.suggestedTotal, notes: i.notes || '' }));
+  e.planTeam = suggestions.team.map(i => ({ id: newId(), name: i.name, formula: i.formula, formulaFactor: i.formulaFactor, suggestedQty: i.suggestedQty, qty: i.suggestedQty, defaultValue: i.defaultValue || 0, notes: i.notes || '' }));
+  if (profile.checklist && profile.checklist.length && (!e.checklist || e.checklist.length === 0)) {
+    e.checklist = profile.checklist.map(i => ({ id: newId(), text: i.text, category: i.category || '', daysBeforeEvent: i.daysBeforeEvent || 0, status: 'Pendente', dueDate: '' }));
+  }
+  if (profile.schedule && profile.schedule.length) {
+    e.schedule = profile.schedule.map(i => ({ id: newId(), text: i.text, category: i.category || '', daysBeforeEvent: i.daysBeforeEvent || 0, status: 'Pendente', dueDate: '', done: false }));
+  }
+  store.scheduleBackup();
+  ok(res, { event: e, computed: evmod.computeEvent(e) });
+});
+
 // ---------- Relatorio PDF do Evento ----------
 app.get('/api/events/:id/report', auth, (req, res) => {
   const e = store.getData().events.find(x => x.id === req.params.id);

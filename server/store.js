@@ -23,6 +23,8 @@ const EMPTY = {
   transactions: [],
   projects: [],
   events: [],
+  eventProfiles: [],
+  eventModels: [],
   meta: { createdAt: null, version: 1 }
 };
 
