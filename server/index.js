@@ -1097,7 +1097,7 @@ const normH = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u03
 const pickH = (row, keys) => { for (const k of Object.keys(row)) { if (keys.includes(normH(k))) return String(row[k] || '').trim(); } return ''; };
 
 // Modelo de planilha para download
-app.get('/api/events/template/:section', auth, (req, res) => {
+app.get('/api/events/template/:section', (req, res) => {
   const XLSX = require('xlsx');
   const section = req.params.section;
   const templates = {
