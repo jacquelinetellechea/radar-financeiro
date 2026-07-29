@@ -639,13 +639,17 @@ app.post('/api/import/commit', (req, res) => {
 // ---------- Perfis Inteligentes de Eventos ----------
 const epmod = require('./event-profiles');
 
-// Garante que os perfis padrão existam na primeira execução
+// Garante que os perfis padrão e configurações globais existam na primeira execução
 function ensureDefaultProfiles() {
   const d = store.getData();
   if (!d.eventProfiles) d.eventProfiles = [];
   if (!d.eventModels) d.eventModels = [];
   if (d.eventProfiles.length === 0) {
     d.eventProfiles = epmod.defaultProfiles();
+    store.scheduleBackup();
+  }
+  if (!d.eventGlobalSettings) {
+    d.eventGlobalSettings = epmod.defaultGlobalSettings();
     store.scheduleBackup();
   }
 }
@@ -715,9 +719,67 @@ app.get('/api/event-profiles/:id/suggest', auth, (req, res) => {
   const profile = d.eventProfiles.find(p => p.id === req.params.id);
   if (!profile) return bad(res, 'Perfil nao encontrado', 404);
   const adults = Number(req.query.adults) || 0;
-  const children = Number(req.query.children) || 0;
-  const tables = Number(req.query.tables) || Math.ceil((adults + children) / 10) || 1;
-  ok(res, epmod.calcSuggestions(profile, adults, children, tables));
+  const children59 = Number(req.query.children59) || Number(req.query.children) || 0;
+  const childrenUnder5 = Number(req.query.childrenUnder5) || 0;
+  const extraHours = Number(req.query.extraHours) || 0;
+  const tables = Number(req.query.tables) || Math.ceil((adults + children59 + childrenUnder5) / ((profile.settings && profile.settings.peoplePerTable) || 10)) || 1;
+  ok(res, epmod.calcSuggestions(profile, adults, children59, childrenUnder5, extraHours, tables));
+});
+
+// ---------- Configurações Globais de Eventos ----------
+app.get('/api/event-global-settings', auth, (req, res) => {
+  ensureDefaultProfiles();
+  ok(res, store.getData().eventGlobalSettings);
+});
+
+app.put('/api/event-global-settings', auth, (req, res) => {
+  const d = store.getData();
+  if (!d.eventGlobalSettings) d.eventGlobalSettings = epmod.defaultGlobalSettings();
+  d.eventGlobalSettings = Object.assign({}, d.eventGlobalSettings, req.body || {}, { updatedAt: new Date().toISOString() });
+  store.scheduleBackup();
+  ok(res, d.eventGlobalSettings);
+});
+
+// CRUD dinâmico para sub-listas das configurações globais
+// Suporta: ageGroups, tableTypes, units, categories, vendorTypes, teamTypes, statusOptions, priorities, formulaTypes
+const GLOBAL_LISTS = ['ageGroups','tableTypes','units','categories','vendorTypes','teamTypes','statusOptions','priorities','formulaTypes'];
+
+app.post('/api/event-global-settings/:list', auth, (req, res) => {
+  const { list } = req.params;
+  if (!GLOBAL_LISTS.includes(list)) return bad(res, 'Lista inválida', 400);
+  const d = store.getData();
+  if (!d.eventGlobalSettings) d.eventGlobalSettings = epmod.defaultGlobalSettings();
+  if (!Array.isArray(d.eventGlobalSettings[list])) d.eventGlobalSettings[list] = [];
+  const item = Object.assign({}, req.body || {}, { id: store.id() });
+  d.eventGlobalSettings[list].push(item);
+  d.eventGlobalSettings.updatedAt = new Date().toISOString();
+  store.scheduleBackup();
+  ok(res, item);
+});
+
+app.put('/api/event-global-settings/:list/:id', auth, (req, res) => {
+  const { list, id } = req.params;
+  if (!GLOBAL_LISTS.includes(list)) return bad(res, 'Lista inválida', 400);
+  const d = store.getData();
+  if (!d.eventGlobalSettings) d.eventGlobalSettings = epmod.defaultGlobalSettings();
+  const arr = d.eventGlobalSettings[list] || [];
+  const i = arr.findIndex(x => x.id === id);
+  if (i < 0) return bad(res, 'Item não encontrado', 404);
+  arr[i] = Object.assign({}, arr[i], req.body || {}, { id });
+  d.eventGlobalSettings.updatedAt = new Date().toISOString();
+  store.scheduleBackup();
+  ok(res, arr[i]);
+});
+
+app.delete('/api/event-global-settings/:list/:id', auth, (req, res) => {
+  const { list, id } = req.params;
+  if (!GLOBAL_LISTS.includes(list)) return bad(res, 'Lista inválida', 400);
+  const d = store.getData();
+  if (!d.eventGlobalSettings) d.eventGlobalSettings = epmod.defaultGlobalSettings();
+  d.eventGlobalSettings[list] = (d.eventGlobalSettings[list] || []).filter(x => x.id !== id);
+  d.eventGlobalSettings.updatedAt = new Date().toISOString();
+  store.scheduleBackup();
+  ok(res, { success: true });
 });
 
 // ---------- Biblioteca de Modelos ----------
@@ -795,7 +857,7 @@ app.post('/api/events/:id/apply-model', auth, (req, res) => {
   ok(res, { event: e, computed: evmod.computeEvent(e) });
 });
 
-// Aplicar perfil a um evento (preenche com sugestões calculadas)
+// Aplicar perfil a um evento (preenche com sugestões calculadas + snapshot)
 app.post('/api/events/:id/apply-profile', auth, (req, res) => {
   const d = store.getData();
   const e = d.events.find(x => x.id === req.params.id);
@@ -805,22 +867,74 @@ app.post('/api/events/:id/apply-profile', auth, (req, res) => {
   if (!profile) return bad(res, 'Perfil nao encontrado', 404);
   const c = evmod.computeEvent(e);
   const adults = c.adults || 0;
-  const children = c.kidsUnder10 || 0;
-  const tables = Math.ceil((adults + children) / 10) || 1;
-  const suggestions = epmod.calcSuggestions(profile, adults, children, tables);
+  const children59 = c.kidsUnder10 || 0;
+  const childrenUnder5 = 0;
+  const tables = Math.ceil((adults + children59) / ((profile.settings && profile.settings.peoplePerTable) || 10)) || 1;
+  const suggestions = epmod.calcSuggestions(profile, adults, children59, childrenUnder5, 0, tables);
   const newId = () => store.id();
+  // Salva snapshot do perfil no evento (independente de futuras alterações no perfil)
   e.profileId = profileId;
-  e.planFood = suggestions.food.map(i => ({ id: newId(), name: i.name, unit: i.unit, perAdult: i.perAdult, perChild: i.perChild, suggestedTotal: i.suggestedTotal, qty: i.suggestedTotal, notes: i.notes || '' }));
-  e.planDrinks = suggestions.drinks.map(i => ({ id: newId(), name: i.name, unit: i.unit, perAdult: i.perAdult, perChild: i.perChild, suggestedTotal: i.suggestedTotal, qty: i.suggestedTotal, notes: i.notes || '' }));
-  e.planDecor = suggestions.decor.map(i => ({ id: newId(), name: i.name, unit: i.unit, formula: i.formula, formulaFactor: i.formulaFactor, suggestedQty: i.suggestedQty, qty: i.suggestedQty, notes: i.notes || '' }));
-  e.planMaterials = suggestions.materials.map(i => ({ id: newId(), name: i.name, unit: i.unit, perAdult: i.perAdult, perChild: i.perChild, suggestedTotal: i.suggestedTotal, qty: i.suggestedTotal, notes: i.notes || '' }));
-  e.planTeam = suggestions.team.map(i => ({ id: newId(), name: i.name, formula: i.formula, formulaFactor: i.formulaFactor, suggestedQty: i.suggestedQty, qty: i.suggestedQty, defaultValue: i.defaultValue || 0, notes: i.notes || '' }));
+  e.profileSnapshot = epmod.snapshotProfile(profile, () => store.id());
+  e.planFood = suggestions.food.map(i => ({ id: newId(), name: i.name, unit: i.unit, perAdult: i.perAdult, perChild59: i.perChild59, perChildUnder5: i.perChildUnder5, suggestedTotal: i.suggestedTotal, qty: i.suggestedTotal, notes: i.notes || '' }));
+  e.planDrinks = suggestions.drinks.map(i => ({ id: newId(), name: i.name, unit: i.unit, perAdult: i.perAdult, perChild59: i.perChild59, perChildUnder5: i.perChildUnder5, suggestedTotal: i.suggestedTotal, qty: i.suggestedTotal, notes: i.notes || '' }));
+  e.planDecor = suggestions.decor.map(i => ({ id: newId(), name: i.name, unit: i.unit, formulaType: i.formulaType, formulaFactor: i.formulaFactor, formulaN: i.formulaN, suggestedQty: i.suggestedQty, qty: i.suggestedQty, notes: i.notes || '' }));
+  e.planMaterials = suggestions.materials.map(i => ({ id: newId(), name: i.name, unit: i.unit, category: i.category, formulaType: i.formulaType, formulaFactor: i.formulaFactor, formulaN: i.formulaN, suggestedQty: i.suggestedQty, qty: i.suggestedQty, notes: i.notes || '' }));
+  e.planTeam = suggestions.team.map(i => ({ id: newId(), name: i.name, formulaType: i.formulaType, formulaFactor: i.formulaFactor, formulaN: i.formulaN, suggestedQty: i.suggestedQty, qty: i.suggestedQty, defaultValue: i.defaultValue || 0, notes: i.notes || '' }));
   if (profile.checklist && profile.checklist.length && (!e.checklist || e.checklist.length === 0)) {
-    e.checklist = profile.checklist.map(i => ({ id: newId(), text: i.text, category: i.category || '', daysBeforeEvent: i.daysBeforeEvent || 0, status: 'Pendente', dueDate: '' }));
+    e.checklist = profile.checklist.map(i => ({ id: newId(), text: i.text, category: i.category || '', daysBeforeEvent: i.daysBeforeEvent || 0, priority: i.priority || 'Média', status: 'Pendente', dueDate: '' }));
   }
   if (profile.schedule && profile.schedule.length) {
     e.schedule = profile.schedule.map(i => ({ id: newId(), text: i.text, category: i.category || '', daysBeforeEvent: i.daysBeforeEvent || 0, status: 'Pendente', dueDate: '', done: false }));
   }
+  if (profile.defaultVendors && profile.defaultVendors.length && (!e.vendors || e.vendors.length === 0)) {
+    e.vendors = profile.defaultVendors.map(v => ({ id: newId(), name: v.name, type: v.type, notes: v.notes || '', status: 'Planejamento', value: 0 }));
+  }
+  if (profile.budget && profile.budget.length && (!e.budgetItems || e.budgetItems.length === 0)) {
+    e.budgetItems = profile.budget.map(b => ({ id: newId(), category: b.category, estimatedValue: b.estimatedValue || 0, actualValue: 0, notes: b.notes || '' }));
+  }
+  store.scheduleBackup();
+  ok(res, { event: e, computed: evmod.computeEvent(e) });
+});
+
+// Atualização manual seletiva de perfil (escolher quais seções importar)
+app.post('/api/events/:id/apply-profile-selective', auth, (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  const { profileId, sections } = req.body || {};
+  const profile = (d.eventProfiles || []).find(p => p.id === profileId);
+  if (!profile) return bad(res, 'Perfil nao encontrado', 404);
+  const secs = Array.isArray(sections) ? sections : [];
+  const c = evmod.computeEvent(e);
+  const adults = c.adults || 0;
+  const children59 = c.kidsUnder10 || 0;
+  const childrenUnder5 = 0;
+  const tables = Math.ceil((adults + children59) / ((profile.settings && profile.settings.peoplePerTable) || 10)) || 1;
+  const suggestions = epmod.calcSuggestions(profile, adults, children59, childrenUnder5, 0, tables);
+  const newId = () => store.id();
+  if (secs.includes('food')) e.planFood = suggestions.food.map(i => ({ id: newId(), name: i.name, unit: i.unit, perAdult: i.perAdult, perChild59: i.perChild59, perChildUnder5: i.perChildUnder5, suggestedTotal: i.suggestedTotal, qty: i.suggestedTotal, notes: i.notes || '' }));
+  if (secs.includes('drinks')) e.planDrinks = suggestions.drinks.map(i => ({ id: newId(), name: i.name, unit: i.unit, perAdult: i.perAdult, perChild59: i.perChild59, perChildUnder5: i.perChildUnder5, suggestedTotal: i.suggestedTotal, qty: i.suggestedTotal, notes: i.notes || '' }));
+  if (secs.includes('decor')) e.planDecor = suggestions.decor.map(i => ({ id: newId(), name: i.name, unit: i.unit, formulaType: i.formulaType, formulaFactor: i.formulaFactor, formulaN: i.formulaN, suggestedQty: i.suggestedQty, qty: i.suggestedQty, notes: i.notes || '' }));
+  if (secs.includes('materials')) e.planMaterials = suggestions.materials.map(i => ({ id: newId(), name: i.name, unit: i.unit, category: i.category, formulaType: i.formulaType, formulaFactor: i.formulaFactor, formulaN: i.formulaN, suggestedQty: i.suggestedQty, qty: i.suggestedQty, notes: i.notes || '' }));
+  if (secs.includes('team')) e.planTeam = suggestions.team.map(i => ({ id: newId(), name: i.name, formulaType: i.formulaType, formulaFactor: i.formulaFactor, formulaN: i.formulaN, suggestedQty: i.suggestedQty, qty: i.suggestedQty, defaultValue: i.defaultValue || 0, notes: i.notes || '' }));
+  if (secs.includes('checklist') && profile.checklist && profile.checklist.length) {
+    e.checklist = profile.checklist.map(i => ({ id: newId(), text: i.text, category: i.category || '', daysBeforeEvent: i.daysBeforeEvent || 0, priority: i.priority || 'Média', status: 'Pendente', dueDate: '' }));
+  }
+  if (secs.includes('schedule') && profile.schedule && profile.schedule.length) {
+    e.schedule = profile.schedule.map(i => ({ id: newId(), text: i.text, category: i.category || '', daysBeforeEvent: i.daysBeforeEvent || 0, status: 'Pendente', dueDate: '', done: false }));
+  }
+  if (secs.includes('vendors') && profile.defaultVendors && profile.defaultVendors.length) {
+    e.vendors = profile.defaultVendors.map(v => ({ id: newId(), name: v.name, type: v.type, notes: v.notes || '', status: 'Planejamento', value: 0 }));
+  }
+  if (secs.includes('budget') && profile.budget && profile.budget.length) {
+    e.budgetItems = profile.budget.map(b => ({ id: newId(), category: b.category, estimatedValue: b.estimatedValue || 0, actualValue: 0, notes: b.notes || '' }));
+  }
+  if (secs.includes('settings') && profile.settings) {
+    e.profileSettings = Object.assign({}, profile.settings);
+  }
+  // Atualiza o snapshot do perfil
+  e.profileId = profileId;
+  e.profileSnapshot = epmod.snapshotProfile(profile, () => store.id());
   store.scheduleBackup();
   ok(res, { event: e, computed: evmod.computeEvent(e) });
 });

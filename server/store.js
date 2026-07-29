@@ -25,6 +25,7 @@ const EMPTY = {
   events: [],
   eventProfiles: [],
   eventModels: [],
+  eventGlobalSettings: null,
   meta: { createdAt: null, version: 1 }
 };
 

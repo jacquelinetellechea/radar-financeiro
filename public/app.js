@@ -1226,7 +1226,7 @@
   PAGES.config = async function () {
     const s = await api('GET', '/settings');
     if (!state.configTab) state.configTab = 'geral';
-    const cfgTabs = [['geral', 'Geral'], ['perfis', 'Perfis de Eventos']];
+    const cfgTabs = [['geral', 'Geral'], ['perfis', 'Perfis de Eventos'], ['globais', 'Config. Globais']];
     const tabsHtml = cfgTabs.map(([k, l]) => `<button class="btn ${k === state.configTab ? 'btn-primary' : 'btn-ghost'}" data-cfg-tab="${k}">${l}</button>`).join('');
     $('#content').innerHTML = pageHeader('Configuracoes', 'Saldo inicial, seguranca, backup e perfis de eventos')
       + `<div class="flex gap-1 flex-wrap mb-6">${tabsHtml}</div><div id="cfg-sub"></div>`;
@@ -1287,12 +1287,21 @@
     } // end geral
 
     // ---- Aba: Perfis de Eventos ----
+    if (state.configTab === 'perfis') {
     let profiles = [];
     try { profiles = await api('GET', '/event-profiles'); } catch (_) {}
     const PLAN_SECTIONS = [
-      { key: 'food', label: 'Alimentacao' }, { key: 'drinks', label: 'Bebidas' },
-      { key: 'decor', label: 'Decoracao' }, { key: 'materials', label: 'Materiais' },
-      { key: 'team', label: 'Equipe' }, { key: 'checklist', label: 'Checklist' }, { key: 'schedule', label: 'Cronograma' }
+      { key: 'food', label: 'Alimentação' }, { key: 'drinks', label: 'Bebidas' },
+      { key: 'decor', label: 'Decoração' }, { key: 'materials', label: 'Materiais' },
+      { key: 'team', label: 'Equipe' }, { key: 'checklist', label: 'Checklist' },
+      { key: 'schedule', label: 'Cronograma' }, { key: 'defaultVendors', label: 'Fornecedores' },
+      { key: 'budget', label: 'Orçamento' }
+    ];
+    const FORMULA_TYPES = [
+      { key: 'fixed', label: 'Fixo' }, { key: 'perAdult', label: 'Por adulto' },
+      { key: 'perChild', label: 'Por criança' }, { key: 'perGuest', label: 'Por convidado' },
+      { key: 'perTable', label: 'Por mesa' }, { key: 'perNGuests', label: 'A cada N convidados' },
+      { key: 'perFamily', label: 'Por família' }
     ];
     if (!state.profileId && profiles.length) state.profileId = profiles[0].id;
     const selProf = profiles.find(p => p.id === state.profileId);
@@ -1307,17 +1316,83 @@
       const isTeam = secKey === 'team';
       const isSched = secKey === 'schedule';
       const isCk = secKey === 'checklist';
-      const rows = items.map(i => {
-        if (isSched || isCk) return `<tr><td>${esc(i.text || i.name || '')}</td><td>${esc(i.category || '')}</td><td>${isSched ? (i.daysBeforeEvent != null ? i.daysBeforeEvent + 'd antes' : '') : ''}</td><td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td></tr>`;
-        if (isTeam) return `<tr><td>${esc(i.name)}</td><td>${esc(i.unit || '')}</td><td>${i.qtyPerAdult != null ? i.qtyPerAdult + '/adulto' : ''}</td><td>${i.qtyPerChild != null ? i.qtyPerChild + '/crianca' : ''}</td><td>${brl(i.defaultValue)}</td><td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td></tr>`;
-        return `<tr><td>${esc(i.name)}</td><td>${esc(i.unit || '')}</td><td>${i.qtyPerAdult != null ? i.qtyPerAdult + '/adulto' : ''}</td><td>${i.qtyPerChild != null ? i.qtyPerChild + '/crianca' : ''}</td><td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td></tr>`;
-      }).join('') || `<tr><td colspan="6" class="text-muted text-center py-4">Nenhum item. Adicione o primeiro.</td></tr>`;
-      const thead = (isSched || isCk)
-        ? '<tr><th>Texto</th><th>Categoria</th><th>Dias antes</th><th></th></tr>'
-        : isTeam ? '<tr><th>Funcao</th><th>Unidade</th><th>Qtd/adulto</th><th>Qtd/crianca</th><th>Valor</th><th></th></tr>'
-        : '<tr><th>Item</th><th>Unidade</th><th>Qtd/adulto</th><th>Qtd/crianca</th><th></th></tr>';
+      const isVendors = secKey === 'defaultVendors';
+      const isBudget = secKey === 'budget';
+      const isDecorMat = secKey === 'decor' || secKey === 'materials';
+      const isFood = secKey === 'food' || secKey === 'drinks';
+      let thead = '', rows = '';
+      if (isFood) {
+        thead = '<tr><th>Item</th><th>Unidade</th><th>/Adulto</th><th>/Criança 5-9</th><th>/Criança &lt;5</th><th>/Hora extra</th><th></th></tr>';
+        rows = items.map(i => `<tr>
+          <td><b>${esc(i.name)}</b></td><td>${esc(i.unit || '')}</td>
+          <td>${i.perAdult != null ? i.perAdult : '—'}</td>
+          <td>${i.perChild59 != null ? i.perChild59 : (i.perChild != null ? i.perChild : '—')}</td>
+          <td>${i.perChildUnder5 != null ? i.perChildUnder5 : '—'}</td>
+          <td>${i.perExtraHour != null ? i.perExtraHour : '—'}</td>
+          <td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td>
+        </tr>`).join('') || `<tr><td colspan="7" class="text-muted text-center py-4">Nenhum item.</td></tr>`;
+      } else if (isDecorMat) {
+        thead = '<tr><th>Item</th><th>Unidade</th><th>Fórmula</th><th>Fator</th><th>N</th><th></th></tr>';
+        rows = items.map(i => {
+          const ft = FORMULA_TYPES.find(f => f.key === i.formulaType) || { label: i.formulaType || 'Fixo' };
+          return `<tr>
+            <td><b>${esc(i.name)}</b></td><td>${esc(i.unit || '')}</td>
+            <td><span class="badge">${ft.label}</span></td>
+            <td>${i.formulaFactor != null ? i.formulaFactor : '—'}</td>
+            <td>${i.formulaN != null ? i.formulaN : '—'}</td>
+            <td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td>
+          </tr>`;
+        }).join('') || `<tr><td colspan="6" class="text-muted text-center py-4">Nenhum item.</td></tr>`;
+      } else if (isTeam) {
+        thead = '<tr><th>Função</th><th>Fórmula</th><th>Fator</th><th>N</th><th></th></tr>';
+        rows = items.map(i => {
+          const ft = FORMULA_TYPES.find(f => f.key === i.formulaType) || { label: i.formulaType || 'Fixo' };
+          return `<tr>
+            <td><b>${esc(i.name)}</b></td>
+            <td><span class="badge">${ft.label}</span></td>
+            <td>${i.formulaFactor != null ? i.formulaFactor : '—'}</td>
+            <td>${i.formulaN != null ? i.formulaN : '—'}</td>
+            <td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td>
+          </tr>`;
+        }).join('') || `<tr><td colspan="5" class="text-muted text-center py-4">Nenhum item.</td></tr>`;
+      } else if (isSched || isCk) {
+        thead = `<tr><th>Texto</th><th>Categoria</th><th>Dias antes</th>${isCk ? '<th>Prioridade</th>' : ''}<th></th></tr>`;
+        rows = items.map(i => `<tr>
+          <td>${esc(i.text || i.name || '')}</td><td>${esc(i.category || '')}</td>
+          <td>${i.daysBeforeEvent != null ? i.daysBeforeEvent + 'd' : '—'}</td>
+          ${isCk ? `<td>${esc(i.priority || '')}</td>` : ''}
+          <td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td>
+        </tr>`).join('') || `<tr><td colspan="5" class="text-muted text-center py-4">Nenhum item.</td></tr>`;
+      } else if (isVendors) {
+        thead = '<tr><th>Nome</th><th>Tipo</th><th>Obs</th><th></th></tr>';
+        rows = items.map(i => `<tr>
+          <td><b>${esc(i.name)}</b></td><td>${esc(i.type || '')}</td><td>${esc(i.notes || '')}</td>
+          <td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td>
+        </tr>`).join('') || `<tr><td colspan="4" class="text-muted text-center py-4">Nenhum fornecedor padrão.</td></tr>`;
+      } else if (isBudget) {
+        thead = '<tr><th>Categoria</th><th>Valor estimado</th><th>Obs</th><th></th></tr>';
+        rows = items.map(i => `<tr>
+          <td><b>${esc(i.category)}</b></td><td>${brl(i.estimatedValue)}</td><td>${esc(i.notes || '')}</td>
+          <td class="text-right whitespace-nowrap"><button class="chip" data-pi-edit="${i.id}">✏️</button> <button class="chip" data-pi-del="${i.id}">🗑️</button></td>
+        </tr>`).join('') || `<tr><td colspan="4" class="text-muted text-center py-4">Nenhum item de orçamento.</td></tr>`;
+      }
+      // Configurações do perfil
+      const ps = selProf.settings || {};
+      const settingsHtml = `<div class="card p-4 mb-4">
+        <div class="flex justify-between items-center mb-3"><h4 class="font-semibold">Configurações do perfil</h4><button class="btn btn-ghost" id="prof-settings-edit">✏️ Editar</button></div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div><span class="text-muted">Pessoas/mesa:</span> <b>${ps.peoplePerTable || 10}</b></div>
+          <div><span class="text-muted">Tipo de mesa:</span> <b>${esc(ps.tableType || 'Redonda')}</b></div>
+          <div><span class="text-muted">Duração (h):</span> <b>${ps.eventDurationHours || 4}</b></div>
+          <div><span class="text-muted">Margem alim.:</span> <b>${((ps.foodSafetyMargin || 0) * 100).toFixed(0)}%</b></div>
+          <div><span class="text-muted">Margem beb.:</span> <b>${((ps.drinkSafetyMargin || 0) * 100).toFixed(0)}%</b></div>
+          <div><span class="text-muted">Excedente:</span> <b>${((ps.surplusPercent || 0) * 100).toFixed(0)}%</b></div>
+          <div><span class="text-muted">Tam. família:</span> <b>${ps.familySize || 3}</b></div>
+        </div>
+      </div>`;
       itemsHtml = `
-        <div class="card overflow-hidden mt-4">
+        ${settingsHtml}
+        <div class="card overflow-hidden mt-2">
           <div class="flex justify-between items-center p-4 flex-wrap gap-3">
             <div class="flex gap-2 flex-wrap">${secTabs}</div>
             <button class="btn btn-primary" id="pi-add">+ Item</button>
@@ -1337,30 +1412,50 @@
           ${selProf ? `<button class="btn btn-ghost" id="prof-dup">Duplicar</button> <button class="btn btn-ghost" id="prof-edit">✏️ Editar</button> <button class="btn btn-ghost" id="prof-del">🗑️</button>` : ''}
         </div>
       </div>
-      ${!profiles.length ? '<div class="card p-8 text-center text-muted">Nenhum perfil ainda. Crie o primeiro para configurar itens de alimentacao, bebidas, decoracao, equipe e cronograma padrao para seus eventos.</div>' : ''}
-      ${selProf ? `<div class="card p-4"><p class="text-sm text-muted">${esc(selProf.description || 'Sem descricao')}</p></div>` : ''}
+      ${!profiles.length ? '<div class="card p-8 text-center text-muted">Nenhum perfil ainda. Crie o primeiro para configurar itens de alimentação, bebidas, decoração, equipe e cronograma padrão para seus eventos.</div>' : ''}
+      ${selProf ? `<div class="card p-4 mb-2"><p class="text-sm text-muted">${esc(selProf.description || 'Sem descrição')}</p></div>` : ''}
       ${itemsHtml}`;
 
     // Eventos da aba perfis
     if ($('#prof-sel')) $('#prof-sel').addEventListener('change', e => { state.profileId = e.target.value; state.profileSection = 'food'; renderCfgSub(s); });
     if ($('#prof-new')) $('#prof-new').addEventListener('click', () => formModal('Novo perfil de evento', [
       { name: 'name', label: 'Nome do perfil', required: true, col: 'full', placeholder: 'Ex: Casamento 100 pessoas' },
-      { name: 'description', label: 'Descricao', col: 'full' }
+      { name: 'description', label: 'Descrição', col: 'full' },
+      { name: 'icon', label: 'Ícone (emoji)', value: '🎉' },
+      { name: 'color', label: 'Cor (hex)', value: '#B9502C' }
     ], async v => {
       const p = await api('POST', '/event-profiles', v);
       state.profileId = p.id; state.profileSection = 'food'; closeModal(); toast('Perfil criado', 'ok'); renderCfgSub(s);
     }));
     if ($('#prof-edit') && selProf) $('#prof-edit').addEventListener('click', () => formModal('Editar perfil', [
       { name: 'name', label: 'Nome', required: true, col: 'full', value: selProf.name },
-      { name: 'description', label: 'Descricao', col: 'full', value: selProf.description || '' }
+      { name: 'description', label: 'Descrição', col: 'full', value: selProf.description || '' },
+      { name: 'icon', label: 'Ícone (emoji)', value: selProf.icon || '🎉' },
+      { name: 'color', label: 'Cor (hex)', value: selProf.color || '#B9502C' }
     ], async v => { await api('PUT', '/event-profiles/' + selProf.id, v); closeModal(); toast('Salvo', 'ok'); renderCfgSub(s); }));
+    if ($('#prof-settings-edit') && selProf) $('#prof-settings-edit').addEventListener('click', () => {
+      const ps = selProf.settings || {};
+      formModal('Configurações do perfil', [
+        { name: 'peoplePerTable', label: 'Pessoas por mesa', type: 'number', min: 1, value: ps.peoplePerTable || 10 },
+        { name: 'tableType', label: 'Tipo de mesa padrão', value: ps.tableType || 'Redonda' },
+        { name: 'eventDurationHours', label: 'Duração padrão (horas)', type: 'number', min: 1, value: ps.eventDurationHours || 4 },
+        { name: 'foodSafetyMargin', label: 'Margem de segurança alimentação (ex: 0.1 = 10%)', type: 'number', step: '0.01', min: 0, value: ps.foodSafetyMargin || 0.1 },
+        { name: 'drinkSafetyMargin', label: 'Margem de segurança bebidas (ex: 0.15 = 15%)', type: 'number', step: '0.01', min: 0, value: ps.drinkSafetyMargin || 0.15 },
+        { name: 'surplusPercent', label: 'Excedente geral (ex: 0.05 = 5%)', type: 'number', step: '0.01', min: 0, value: ps.surplusPercent || 0.05 },
+        { name: 'familySize', label: 'Tamanho médio de família', type: 'number', min: 1, value: ps.familySize || 3 }
+      ], async v => {
+        const settings = { peoplePerTable: Number(v.peoplePerTable)||10, tableType: v.tableType||'Redonda', eventDurationHours: Number(v.eventDurationHours)||4, foodSafetyMargin: Number(v.foodSafetyMargin)||0.1, drinkSafetyMargin: Number(v.drinkSafetyMargin)||0.15, surplusPercent: Number(v.surplusPercent)||0.05, familySize: Number(v.familySize)||3 };
+        await api('PUT', '/event-profiles/' + selProf.id, { settings });
+        closeModal(); toast('Configurações salvas', 'ok'); renderCfgSub(s);
+      });
+    });
     if ($('#prof-dup') && selProf) $('#prof-dup').addEventListener('click', async () => {
       const p = await api('POST', '/event-profiles/' + selProf.id + '/duplicate', {});
       state.profileId = p.id; toast('Perfil duplicado', 'ok'); renderCfgSub(s);
     });
     if ($('#prof-del') && selProf) $('#prof-del').addEventListener('click', () => confirmModal('Excluir perfil "' + selProf.name + '"?', async () => {
       await api('DELETE', '/event-profiles/' + selProf.id);
-      state.profileId = null; toast('Excluido', 'ok'); renderCfgSub(s);
+      state.profileId = null; toast('Excluído', 'ok'); renderCfgSub(s);
     }));
     document.querySelectorAll('[data-psec]').forEach(b => b.addEventListener('click', () => { state.profileSection = b.dataset.psec; renderCfgSub(s); }));
 
@@ -1368,8 +1463,21 @@
     if ($('#pi-add') && selProf) $('#pi-add').addEventListener('click', () => {
       const secKey = state.profileSection;
       const isSched = secKey === 'schedule'; const isCk = secKey === 'checklist'; const isTeam = secKey === 'team';
+      const isDecorMat = secKey === 'decor' || secKey === 'materials';
+      const isFood = secKey === 'food' || secKey === 'drinks';
+      const isVendors = secKey === 'defaultVendors'; const isBudget = secKey === 'budget';
+      const fmtOpts = FORMULA_TYPES.map(f => ({ value: f.key, label: f.label }));
       let fields;
-      if (isSched) fields = [
+      if (isFood) fields = [
+        { name: 'name', label: 'Item', required: true, col: 'full' },
+        { name: 'unit', label: 'Unidade', value: 'unidade' },
+        { name: 'perAdult', label: 'Qtd por adulto', type: 'number', step: '0.001', value: 0 },
+        { name: 'perChild59', label: 'Qtd por criança (5-9 anos)', type: 'number', step: '0.001', value: 0 },
+        { name: 'perChildUnder5', label: 'Qtd por criança (< 5 anos)', type: 'number', step: '0.001', value: 0 },
+        { name: 'perExtraHour', label: 'Qtd por hora extra', type: 'number', step: '0.001', value: 0 },
+        { name: 'notes', label: 'Observações', col: 'full' }
+      ];
+      else if (isSched) fields = [
         { name: 'text', label: 'Etapa', required: true, col: 'full' },
         { name: 'category', label: 'Categoria' },
         { name: 'daysBeforeEvent', label: 'Dias antes do evento', type: 'number', min: 0, value: 30 }
@@ -1377,55 +1485,188 @@
       else if (isCk) fields = [
         { name: 'text', label: 'Tarefa', required: true, col: 'full' },
         { name: 'category', label: 'Categoria' },
-        { name: 'daysBeforeEvent', label: 'Dias antes do evento', type: 'number', min: 0, value: 30 }
+        { name: 'daysBeforeEvent', label: 'Dias antes do evento', type: 'number', min: 0, value: 30 },
+        { name: 'priority', label: 'Prioridade', type: 'select', options: [{value:'Alta',label:'Alta'},{value:'Média',label:'Média'},{value:'Baixa',label:'Baixa'}] }
       ];
       else if (isTeam) fields = [
-        { name: 'name', label: 'Funcao', required: true, col: 'full' },
-        { name: 'unit', label: 'Unidade', value: 'pessoa' },
-        { name: 'qtyPerAdult', label: 'Qtd por adulto (ex: 0.1 = 1 a cada 10)', type: 'number', step: '0.001', value: 0 },
-        { name: 'qtyPerChild', label: 'Qtd por crianca', type: 'number', step: '0.001', value: 0 },
-        { name: 'defaultValue', label: 'Valor por pessoa (R$)', type: 'number', step: '0.01', value: 0 }
+        { name: 'name', label: 'Função', required: true, col: 'full' },
+        { name: 'formulaType', label: 'Tipo de fórmula', type: 'select', options: fmtOpts },
+        { name: 'formulaFactor', label: 'Fator (quantidade base)', type: 'number', step: '0.001', value: 1 },
+        { name: 'formulaN', label: 'N (para "a cada N convidados")', type: 'number', min: 1, value: 20 },
+        { name: 'notes', label: 'Observações', col: 'full' }
+      ];
+      else if (isDecorMat) fields = [
+        { name: 'name', label: 'Item', required: true, col: 'full' },
+        { name: 'unit', label: 'Unidade', value: 'unidade' },
+        { name: 'formulaType', label: 'Tipo de fórmula', type: 'select', options: fmtOpts },
+        { name: 'formulaFactor', label: 'Fator (quantidade base)', type: 'number', step: '0.001', value: 1 },
+        { name: 'formulaN', label: 'N (para "a cada N convidados")', type: 'number', min: 1, value: 10 },
+        { name: 'notes', label: 'Observações', col: 'full' }
+      ];
+      else if (isVendors) fields = [
+        { name: 'name', label: 'Nome do fornecedor', required: true, col: 'full' },
+        { name: 'type', label: 'Tipo (ex: Buffet, DJ, Fotografia)' },
+        { name: 'notes', label: 'Observações', col: 'full' }
+      ];
+      else if (isBudget) fields = [
+        { name: 'category', label: 'Categoria', required: true, col: 'full' },
+        { name: 'estimatedValue', label: 'Valor estimado (R$)', type: 'number', step: '0.01', value: 0 },
+        { name: 'notes', label: 'Observações', col: 'full' }
       ];
       else fields = [
         { name: 'name', label: 'Item', required: true, col: 'full' },
-        { name: 'unit', label: 'Unidade (ex: kg, litro, unidade)', value: 'unidade' },
-        { name: 'qtyPerAdult', label: 'Qtd por adulto', type: 'number', step: '0.001', value: 0 },
-        { name: 'qtyPerChild', label: 'Qtd por crianca', type: 'number', step: '0.001', value: 0 }
+        { name: 'unit', label: 'Unidade', value: 'unidade' }
       ];
-      formModal('Adicionar item em ' + PLAN_SECTIONS.find(x => x.key === secKey).label, fields, async v => {
-        await api('POST', '/event-profiles/' + selProf.id + '/items', { section: secKey, item: Object.assign({ id: genId() }, v, { qtyPerAdult: Number(v.qtyPerAdult) || 0, qtyPerChild: Number(v.qtyPerChild) || 0, defaultValue: Number(v.defaultValue) || 0, daysBeforeEvent: Number(v.daysBeforeEvent) || 0 }) });
+      const secLabel = PLAN_SECTIONS.find(x => x.key === secKey);
+      formModal('Adicionar item — ' + (secLabel ? secLabel.label : secKey), fields, async v => {
+        const item = Object.assign({ id: genId(), active: true, order: (selProf[secKey] || []).length }, v, {
+          perAdult: Number(v.perAdult) || 0, perChild59: Number(v.perChild59) || 0,
+          perChildUnder5: Number(v.perChildUnder5) || 0, perExtraHour: Number(v.perExtraHour) || 0,
+          formulaFactor: Number(v.formulaFactor) || 1, formulaN: Number(v.formulaN) || 1,
+          daysBeforeEvent: Number(v.daysBeforeEvent) || 0, estimatedValue: Number(v.estimatedValue) || 0
+        });
+        const updated = JSON.parse(JSON.stringify(selProf));
+        if (!Array.isArray(updated[secKey])) updated[secKey] = [];
+        updated[secKey].push(item);
+        await api('PUT', '/event-profiles/' + selProf.id, { [secKey]: updated[secKey] });
         closeModal(); toast('Item adicionado', 'ok'); renderCfgSub(s);
       });
     });
     document.querySelectorAll('[data-pi-del]').forEach(b => b.addEventListener('click', async () => {
-      await api('DELETE', '/event-profiles/' + selProf.id + '/items/' + b.dataset.piDel + '?section=' + state.profileSection);
+      const secKey = state.profileSection;
+      const updated = (selProf[secKey] || []).filter(x => x.id !== b.dataset.piDel);
+      await api('PUT', '/event-profiles/' + selProf.id, { [secKey]: updated });
       toast('Removido', 'ok'); renderCfgSub(s);
     }));
     document.querySelectorAll('[data-pi-edit]').forEach(b => b.addEventListener('click', async () => {
       const secKey = state.profileSection;
       const item = (selProf[secKey] || []).find(x => x.id === b.dataset.piEdit); if (!item) return;
       const isSched = secKey === 'schedule'; const isCk = secKey === 'checklist'; const isTeam = secKey === 'team';
+      const isDecorMat = secKey === 'decor' || secKey === 'materials';
+      const isFood = secKey === 'food' || secKey === 'drinks';
+      const isVendors = secKey === 'defaultVendors'; const isBudget = secKey === 'budget';
+      const fmtOpts = FORMULA_TYPES.map(f => ({ value: f.key, label: f.label }));
       let fields;
-      if (isSched || isCk) fields = [
+      if (isFood) fields = [
+        { name: 'name', label: 'Item', required: true, col: 'full', value: item.name },
+        { name: 'unit', label: 'Unidade', value: item.unit || 'unidade' },
+        { name: 'perAdult', label: 'Qtd por adulto', type: 'number', step: '0.001', value: item.perAdult || 0 },
+        { name: 'perChild59', label: 'Qtd por criança (5-9 anos)', type: 'number', step: '0.001', value: item.perChild59 != null ? item.perChild59 : (item.perChild || 0) },
+        { name: 'perChildUnder5', label: 'Qtd por criança (< 5 anos)', type: 'number', step: '0.001', value: item.perChildUnder5 || 0 },
+        { name: 'perExtraHour', label: 'Qtd por hora extra', type: 'number', step: '0.001', value: item.perExtraHour || 0 },
+        { name: 'notes', label: 'Observações', col: 'full', value: item.notes || '' }
+      ];
+      else if (isSched || isCk) fields = [
         { name: 'text', label: 'Texto', required: true, col: 'full', value: item.text || item.name || '' },
         { name: 'category', label: 'Categoria', value: item.category || '' },
-        { name: 'daysBeforeEvent', label: 'Dias antes do evento', type: 'number', min: 0, value: item.daysBeforeEvent || 0 }
+        { name: 'daysBeforeEvent', label: 'Dias antes do evento', type: 'number', min: 0, value: item.daysBeforeEvent || 0 },
+        ...(isCk ? [{ name: 'priority', label: 'Prioridade', type: 'select', options: [{value:'Alta',label:'Alta'},{value:'Média',label:'Média'},{value:'Baixa',label:'Baixa'}], value: item.priority || 'Média' }] : [])
       ];
       else if (isTeam) fields = [
-        { name: 'name', label: 'Funcao', required: true, col: 'full', value: item.name },
-        { name: 'unit', label: 'Unidade', value: item.unit || 'pessoa' },
-        { name: 'qtyPerAdult', label: 'Qtd por adulto', type: 'number', step: '0.001', value: item.qtyPerAdult || 0 },
-        { name: 'qtyPerChild', label: 'Qtd por crianca', type: 'number', step: '0.001', value: item.qtyPerChild || 0 },
-        { name: 'defaultValue', label: 'Valor por pessoa (R$)', type: 'number', step: '0.01', value: item.defaultValue || 0 }
+        { name: 'name', label: 'Função', required: true, col: 'full', value: item.name },
+        { name: 'formulaType', label: 'Tipo de fórmula', type: 'select', options: fmtOpts, value: item.formulaType || 'fixed' },
+        { name: 'formulaFactor', label: 'Fator', type: 'number', step: '0.001', value: item.formulaFactor || 1 },
+        { name: 'formulaN', label: 'N (para "a cada N convidados")', type: 'number', min: 1, value: item.formulaN || 20 },
+        { name: 'notes', label: 'Observações', col: 'full', value: item.notes || '' }
+      ];
+      else if (isDecorMat) fields = [
+        { name: 'name', label: 'Item', required: true, col: 'full', value: item.name },
+        { name: 'unit', label: 'Unidade', value: item.unit || 'unidade' },
+        { name: 'formulaType', label: 'Tipo de fórmula', type: 'select', options: fmtOpts, value: item.formulaType || 'fixed' },
+        { name: 'formulaFactor', label: 'Fator', type: 'number', step: '0.001', value: item.formulaFactor || 1 },
+        { name: 'formulaN', label: 'N (para "a cada N convidados")', type: 'number', min: 1, value: item.formulaN || 1 },
+        { name: 'notes', label: 'Observações', col: 'full', value: item.notes || '' }
+      ];
+      else if (isVendors) fields = [
+        { name: 'name', label: 'Nome do fornecedor', required: true, col: 'full', value: item.name },
+        { name: 'type', label: 'Tipo', value: item.type || '' },
+        { name: 'notes', label: 'Observações', col: 'full', value: item.notes || '' }
+      ];
+      else if (isBudget) fields = [
+        { name: 'category', label: 'Categoria', required: true, col: 'full', value: item.category },
+        { name: 'estimatedValue', label: 'Valor estimado (R$)', type: 'number', step: '0.01', value: item.estimatedValue || 0 },
+        { name: 'notes', label: 'Observações', col: 'full', value: item.notes || '' }
       ];
       else fields = [
         { name: 'name', label: 'Item', required: true, col: 'full', value: item.name },
-        { name: 'unit', label: 'Unidade', value: item.unit || 'unidade' },
-        { name: 'qtyPerAdult', label: 'Qtd por adulto', type: 'number', step: '0.001', value: item.qtyPerAdult || 0 },
-        { name: 'qtyPerChild', label: 'Qtd por crianca', type: 'number', step: '0.001', value: item.qtyPerChild || 0 }
+        { name: 'unit', label: 'Unidade', value: item.unit || 'unidade' }
       ];
       formModal('Editar item', fields, async v => {
-        await api('PUT', '/event-profiles/' + selProf.id + '/items/' + item.id, { section: secKey, item: Object.assign({}, item, v, { qtyPerAdult: Number(v.qtyPerAdult) || 0, qtyPerChild: Number(v.qtyPerChild) || 0, defaultValue: Number(v.defaultValue) || 0, daysBeforeEvent: Number(v.daysBeforeEvent) || 0 }) });
+        const updated = (selProf[secKey] || []).map(x => x.id === item.id ? Object.assign({}, x, v, {
+          perAdult: Number(v.perAdult) || 0, perChild59: Number(v.perChild59) || 0,
+          perChildUnder5: Number(v.perChildUnder5) || 0, perExtraHour: Number(v.perExtraHour) || 0,
+          formulaFactor: Number(v.formulaFactor) || 1, formulaN: Number(v.formulaN) || 1,
+          daysBeforeEvent: Number(v.daysBeforeEvent) || 0, estimatedValue: Number(v.estimatedValue) || 0
+        }) : x);
+        await api('PUT', '/event-profiles/' + selProf.id, { [secKey]: updated });
+        closeModal(); toast('Salvo', 'ok'); renderCfgSub(s);
+      });
+    }));
+    return;
+    } // end perfis
+
+    // ---- Aba: Configurações Globais de Eventos ----
+    let gs = null;
+    try { gs = await api('GET', '/event-global-settings'); } catch (_) {}
+    if (!gs) gs = {};
+    const GLOBAL_LIST_META = [
+      { key: 'ageGroups', label: 'Faixas etárias', cols: ['name', 'minAge', 'maxAge'], colLabels: ['Nome', 'Idade mín.', 'Idade máx.'],
+        fields: [{name:'name',label:'Nome',required:true,col:'full'},{name:'minAge',label:'Idade mínima',type:'number',min:0,value:0},{name:'maxAge',label:'Idade máxima',type:'number',min:0,value:120}] },
+      { key: 'tableTypes', label: 'Tipos de mesa', cols: ['name', 'defaultCapacity'], colLabels: ['Nome', 'Capacidade padrão'],
+        fields: [{name:'name',label:'Nome',required:true,col:'full'},{name:'defaultCapacity',label:'Capacidade padrão',type:'number',min:1,value:10}] },
+      { key: 'units', label: 'Unidades de medida', cols: ['name', 'abbr'], colLabels: ['Nome', 'Abreviação'],
+        fields: [{name:'name',label:'Nome',required:true,col:'full'},{name:'abbr',label:'Abreviação',value:'un'}] },
+      { key: 'categories', label: 'Categorias', cols: ['name', 'color'], colLabels: ['Nome', 'Cor'],
+        fields: [{name:'name',label:'Nome',required:true,col:'full'},{name:'color',label:'Cor (hex)',value:'#B9502C'}] },
+      { key: 'vendorTypes', label: 'Tipos de fornecedor', cols: ['name'], colLabels: ['Nome'],
+        fields: [{name:'name',label:'Nome',required:true,col:'full'}] },
+      { key: 'teamTypes', label: 'Tipos de equipe', cols: ['name'], colLabels: ['Nome'],
+        fields: [{name:'name',label:'Nome',required:true,col:'full'}] },
+      { key: 'statusOptions', label: 'Status de evento', cols: ['name', 'color'], colLabels: ['Nome', 'Cor'],
+        fields: [{name:'name',label:'Nome',required:true,col:'full'},{name:'color',label:'Cor (hex)',value:'#6B7280'}] },
+      { key: 'priorities', label: 'Prioridades', cols: ['name', 'color'], colLabels: ['Nome', 'Cor'],
+        fields: [{name:'name',label:'Nome',required:true,col:'full'},{name:'color',label:'Cor (hex)',value:'#F59E0B'}] },
+      { key: 'formulaTypes', label: 'Tipos de fórmula', cols: ['key', 'label', 'description'], colLabels: ['Chave', 'Rótulo', 'Descrição'],
+        fields: [{name:'key',label:'Chave (identificador)',required:true},{name:'label',label:'Rótulo',required:true},{name:'description',label:'Descrição',col:'full'}] }
+    ];
+    if (!state.globalListTab) state.globalListTab = 'ageGroups';
+    const glTabs = GLOBAL_LIST_META.map(m => `<button class="chip ${m.key === state.globalListTab ? 'chip-active' : ''}" data-gl-tab="${m.key}">${m.label}</button>`).join('');
+    const curMeta = GLOBAL_LIST_META.find(m => m.key === state.globalListTab) || GLOBAL_LIST_META[0];
+    const curItems = (gs[curMeta.key] || []);
+    const glRows = curItems.map(item => {
+      const cells = curMeta.cols.map(c => `<td>${c === 'color' ? `<span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${esc(item[c]||'#888')};vertical-align:middle"></span> ${esc(item[c]||'')}` : esc(item[c] != null ? String(item[c]) : '')}</td>`).join('');
+      return `<tr>${cells}<td class="text-right whitespace-nowrap"><button class="chip" data-gl-edit="${item.id}">✏️</button> <button class="chip" data-gl-del="${item.id}">🗑️</button></td></tr>`;
+    }).join('') || `<tr><td colspan="${curMeta.cols.length + 1}" class="text-muted text-center py-4">Nenhum item. Adicione o primeiro.</td></tr>`;
+    const glThead = '<tr>' + curMeta.colLabels.map(l => `<th>${l}</th>`).join('') + '<th></th></tr>';
+    box.innerHTML = `
+      <div class="mb-4">
+        <h3 class="font-semibold mb-1">Configurações Globais de Eventos</h3>
+        <p class="text-sm text-muted">Listas dinâmicas que alimentam todo o módulo de Eventos. Edite livremente — nenhuma lista é fixa.</p>
+      </div>
+      <div class="flex gap-2 flex-wrap mb-4">${glTabs}</div>
+      <div class="card overflow-hidden">
+        <div class="flex justify-between items-center p-4">
+          <h4 class="font-semibold">${curMeta.label}</h4>
+          <button class="btn btn-primary" id="gl-add">+ Adicionar</button>
+        </div>
+        <table><thead>${glThead}</thead><tbody>${glRows}</tbody></table>
+      </div>`;
+    document.querySelectorAll('[data-gl-tab]').forEach(b => b.addEventListener('click', () => { state.globalListTab = b.dataset.glTab; renderCfgSub(s); }));
+    if ($('#gl-add')) $('#gl-add').addEventListener('click', () => {
+      formModal('Adicionar — ' + curMeta.label, curMeta.fields, async v => {
+        await api('POST', '/event-global-settings/' + curMeta.key, v);
+        closeModal(); toast('Adicionado', 'ok'); renderCfgSub(s);
+      });
+    });
+    document.querySelectorAll('[data-gl-del]').forEach(b => b.addEventListener('click', async () => {
+      await api('DELETE', '/event-global-settings/' + curMeta.key + '/' + b.dataset.glDel);
+      toast('Removido', 'ok'); renderCfgSub(s);
+    }));
+    document.querySelectorAll('[data-gl-edit]').forEach(b => b.addEventListener('click', () => {
+      const item = curItems.find(x => x.id === b.dataset.glEdit); if (!item) return;
+      const fields = curMeta.fields.map(f => Object.assign({}, f, { value: item[f.name] != null ? item[f.name] : (f.value || '') }));
+      formModal('Editar — ' + curMeta.label, fields, async v => {
+        await api('PUT', '/event-global-settings/' + curMeta.key + '/' + item.id, v);
         closeModal(); toast('Salvo', 'ok'); renderCfgSub(s);
       });
     }));
@@ -1734,9 +1975,28 @@
   const EV_CATS = ['Buffet', 'Local', 'Decoracao', 'Fotografia', 'Musica/DJ', 'Bolo/Doces', 'Convites', 'Vestuario/Beleza', 'Transporte', 'Outros'];
 
   async function saveEv() { try { await api('PUT', '/events/' + state.ev.id, state.ev); go('eventos'); } catch (e) { toast(e.message, 'err'); } }
-  function newEvent() {
-    formModal('Novo evento', [{ name: 'name', label: 'Nome do evento', required: true, col: 'full', placeholder: 'Ex: Casamento da Ana' }],
-      async v => { const e = await api('POST', '/events', v); state.evId = e.id; state.evTab = 'info'; closeModal(); toast('Evento criado', 'ok'); go('eventos'); });
+  async function newEvent() {
+    let profiles = [];
+    try { profiles = await api('GET', '/event-profiles'); } catch (_) {}
+    const profOpts = profiles.filter(p => p.active !== false).map(p => ({ value: p.id, label: (p.icon ? p.icon + ' ' : '') + p.name }));
+    formModal('Novo evento', [
+      { name: 'name', label: 'Nome do evento', required: true, col: 'full', placeholder: 'Ex: Casamento da Ana' },
+      { name: 'type', label: 'Tipo de evento', col: 'full', placeholder: 'Ex: Casamento, Aniversário, Corporativo' },
+      { name: 'date', label: 'Data', type: 'date', col: 'full' },
+      ...(profOpts.length ? [{ name: 'profileId', label: 'Perfil inteligente (opcional)', type: 'select', options: [{ value: '', label: 'Sem perfil' }, ...profOpts], col: 'full' }] : [])
+    ], async v => {
+      const e = await api('POST', '/events', { name: v.name, type: v.type || '', date: v.date || '' });
+      state.evId = e.id; state.evTab = 'info'; closeModal(); toast('Evento criado', 'ok');
+      // Aplica perfil automaticamente se selecionado
+      if (v.profileId) {
+        try {
+          const result = await api('POST', '/events/' + e.id + '/apply-profile', { profileId: v.profileId });
+          state.ev = result.event;
+          toast('Perfil "' + (profiles.find(p => p.id === v.profileId) || {}).name + '" aplicado!', 'ok');
+        } catch (_) {}
+      }
+      go('eventos');
+    });
   }
   function evCard(e) {
     const meta = [esc(e.type || ''), e.date ? dbr(e.date) : '', esc(e.venue || 'Local a definir')].filter(Boolean).join(' · ');
@@ -2216,15 +2476,48 @@
         });
         toast('Salvo', 'ok'); saveEv();
       });
-      // Aplicar perfil
+      // Aplicar perfil (com seleção de seções)
       if ($('#plan-apply-profile')) $('#plan-apply-profile').addEventListener('click', async () => {
         const sel = $('#plan-profile-sel'); if (!sel || !sel.value) { toast('Selecione um perfil', 'err'); return; }
-        try {
-          const result = await api('POST', '/events/' + e.id + '/apply-profile', { profileId: sel.value });
-          state.ev = result.event;
-          toast('Perfil aplicado!', 'ok');
-          renderEvSub(result.computed);
-        } catch (err) { toast('Erro: ' + err.message, 'err'); }
+        const profileId = sel.value;
+        // Mostrar modal de seleção de seções
+        const SECS = [
+          { key: 'food', label: 'Alimentação' }, { key: 'drinks', label: 'Bebidas' },
+          { key: 'decor', label: 'Decoração' }, { key: 'materials', label: 'Materiais' },
+          { key: 'team', label: 'Equipe' }, { key: 'checklist', label: 'Checklist' },
+          { key: 'schedule', label: 'Cronograma' }, { key: 'vendors', label: 'Fornecedores' },
+          { key: 'budget', label: 'Orçamento' }, { key: 'settings', label: 'Configurações' }
+        ];
+        const checksHtml = SECS.map(s => `<label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" class="prof-sec-check" value="${s.key}" checked style="width:16px;height:16px"> ${s.label}
+        </label>`).join('');
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay active';
+        overlay.innerHTML = `<div class="modal" style="max-width:420px">
+          <div class="modal-header"><h3>Selecionar seções a importar</h3><button class="modal-close" id="sec-modal-close">×</button></div>
+          <div class="modal-body">
+            <p class="text-sm text-muted mb-4">Escolha quais seções do perfil serão importadas para este evento:</p>
+            <div class="grid grid-cols-2 gap-3">${checksHtml}</div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" id="sec-modal-cancel">Cancelar</button>
+            <button class="btn btn-primary" id="sec-modal-ok">Importar seleção</button>
+          </div>
+        </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#sec-modal-close').addEventListener('click', () => overlay.remove());
+        overlay.querySelector('#sec-modal-cancel').addEventListener('click', () => overlay.remove());
+        overlay.querySelector('#sec-modal-ok').addEventListener('click', async () => {
+          const sections = [...overlay.querySelectorAll('.prof-sec-check:checked')].map(c => c.value);
+          overlay.remove();
+          if (!sections.length) { toast('Nenhuma seção selecionada', 'err'); return; }
+          try {
+            const result = await api('POST', '/events/' + e.id + '/apply-profile-selective', { profileId, sections });
+            state.ev = result.event;
+            toast('Perfil aplicado!', 'ok');
+            renderEvSub(result.computed);
+          } catch (err) { toast('Erro: ' + err.message, 'err'); }
+        });
       });
       // Adicionar item manualmente
       if ($('#plan-add-item')) $('#plan-add-item').addEventListener('click', () => {
