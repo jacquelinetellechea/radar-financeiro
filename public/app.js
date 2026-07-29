@@ -2077,7 +2077,7 @@
     if (state.evTab === 'honorarios' && e.owner !== 'Cliente') state.evTab = 'info';
     const ac = { high: 'border-bad/40 bg-bad/10 text-bad', medium: 'border-warn/40 bg-warn/10 text-warn', low: 'border-line bg-panel2' };
     const evMeta = [e.type, e.date ? dbr(e.date) + (e.time ? ' ' + e.time : '') : '', e.venue].filter(Boolean).join(' · ');
-    const evActions = `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-edit">✏️ Editar</button> <button class="btn btn-ghost" id="ev-report" title="Baixar relatorio HTML">📄 Relatório</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`;
+    const evActions = `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-edit">✏️ Editar</button> <button class="btn btn-ghost" id="ev-report" title="Relatório completo (interno)">📄 Relatório</button> <button class="btn btn-ghost" id="ev-client-report" title="Lista de compras para o cliente">🛒 Lista do Cliente</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`;
     const evTheme = e.themeColor || '#B9502C';
     const evHeader = e.coverUrl
       ? `<div class="flex justify-end gap-2 mb-3">${evActions}</div>
@@ -2113,7 +2113,6 @@
     $('#ev-report').addEventListener('click', () => {
       const token = localStorage.getItem('rf_token') || '';
       const url = '/api/events/' + e.id + '/report';
-      // abre em nova aba com token via fetch + blob
       fetch(url, { headers: { Authorization: 'Bearer ' + token } })
         .then(r => r.blob())
         .then(blob => {
@@ -2123,6 +2122,19 @@
           a.click();
           toast('Relatório baixado', 'ok');
         }).catch(() => toast('Erro ao gerar relatório', 'err'));
+    });
+    if ($('#ev-client-report')) $('#ev-client-report').addEventListener('click', () => {
+      const token = localStorage.getItem('rf_token') || '';
+      const url = '/api/events/' + e.id + '/client-report';
+      fetch(url, { headers: { Authorization: 'Bearer ' + token } })
+        .then(r => r.blob())
+        .then(blob => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'lista-compras-' + (e.name || e.id).replace(/[^a-z0-9]/gi, '-') + '.html';
+          a.click();
+          toast('Lista do cliente baixada!', 'ok');
+        }).catch(() => toast('Erro ao gerar lista', 'err'));
     });
     document.querySelectorAll('[data-evtab]').forEach(b => b.addEventListener('click', () => { state.evTab = b.dataset.evtab; renderEvSub(ce); }));
     renderEvSub(ce);

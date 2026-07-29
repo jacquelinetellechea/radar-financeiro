@@ -1042,6 +1042,225 @@ app.get('/api/events/:id/report', auth, (req, res) => {
   res.send(html);
 });
 
+// ---------- Relatorio do Cliente (Lista de Compras) ----------
+app.get('/api/events/:id/client-report', auth, (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  const c = evmod.computeEvent(e);
+  const dbr = s => s ? s.split('-').reverse().join('/') : '—';
+  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const theme = e.themeColor || '#B9502C';
+
+  // Monta as seções de itens a comprar
+  const sections = [];
+
+  // Alimentação
+  const foodItems = (e.planFood || []).filter(i => (Number(i.qty) || 0) > 0);
+  if (foodItems.length) {
+    sections.push({
+      title: 'Alimentação',
+      icon: '🍽️',
+      rows: foodItems.map(i => ({ name: i.name, qty: Number(i.qty), unit: i.unit || 'unidade', notes: i.notes || '' }))
+    });
+  }
+
+  // Bebidas
+  const drinkItems = (e.planDrinks || []).filter(i => (Number(i.qty) || 0) > 0);
+  if (drinkItems.length) {
+    sections.push({
+      title: 'Bebidas',
+      icon: '🍹',
+      rows: drinkItems.map(i => ({ name: i.name, qty: Number(i.qty), unit: i.unit || 'unidade', notes: i.notes || '' }))
+    });
+  }
+
+  // Decoração
+  const decorItems = (e.planDecor || []).filter(i => (Number(i.qty) || 0) > 0);
+  if (decorItems.length) {
+    sections.push({
+      title: 'Decoração',
+      icon: '🎀',
+      rows: decorItems.map(i => ({ name: i.name, qty: Number(i.qty), unit: i.unit || 'unidade', notes: i.notes || '' }))
+    });
+  }
+
+  // Materiais
+  const matItems = (e.planMaterials || []).filter(i => (Number(i.qty) || 0) > 0);
+  if (matItems.length) {
+    sections.push({
+      title: 'Materiais e Suprimentos',
+      icon: '📦',
+      rows: matItems.map(i => ({ name: i.name, qty: Number(i.qty), unit: i.unit || 'unidade', notes: i.notes || '' }))
+    });
+  }
+
+  // Equipe
+  const teamItems = (e.planTeam || []).filter(i => (Number(i.qty) || 0) > 0);
+  if (teamItems.length) {
+    sections.push({
+      title: 'Equipe Necessária',
+      icon: '👥',
+      rows: teamItems.map(i => ({ name: i.name, qty: Number(i.qty), unit: 'pessoa(s)', notes: i.notes || '' }))
+    });
+  }
+
+  // Checklist pendente (itens que o cliente ainda precisa resolver)
+  const pendingCheck = (e.checklist || []).filter(i => i.status !== 'Concluido');
+  if (pendingCheck.length) {
+    sections.push({
+      title: 'Pendentes no Checklist',
+      icon: '✅',
+      isChecklist: true,
+      rows: pendingCheck.map(i => ({ name: i.text, qty: null, unit: '', notes: i.dueDate ? 'Prazo: ' + dbr(i.dueDate) : '', priority: i.priority || '' }))
+    });
+  }
+
+  // Cronograma
+  const schedItems = (e.schedule || []);
+  if (schedItems.length) {
+    sections.push({
+      title: 'Cronograma do Dia',
+      icon: '🕒',
+      isSchedule: true,
+      rows: schedItems.map(i => ({ name: i.text || i.name || '', qty: null, unit: '', notes: i.time || i.category || '' }))
+    });
+  }
+
+  const totalItems = sections.reduce((s, sec) => s + sec.rows.length, 0);
+  const eventDate = e.date ? dbr(e.date) + (e.time ? ' às ' + e.time : '') : 'Data a confirmar';
+  const clientName = e.clientName || 'Cliente';
+
+  const renderSection = sec => {
+    if (sec.isChecklist) {
+      const rows = sec.rows.map(r => {
+        const pColor = { Alta: '#C0392B', Média: '#E67E22', Baixa: '#27AE60' }[r.priority] || '#8B7355';
+        return `<tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #F0EAE0">
+            <span style="display:inline-block;width:18px;height:18px;border:2px solid #ccc;border-radius:4px;vertical-align:middle;margin-right:8px"></span>
+            ${esc(r.name)}
+          </td>
+          <td style="padding:10px 12px;border-bottom:1px solid #F0EAE0;color:#8B7355;font-size:12px">${esc(r.notes)}</td>
+          ${r.priority ? `<td style="padding:10px 12px;border-bottom:1px solid #F0EAE0"><span style="background:${pColor};color:#fff;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600">${esc(r.priority)}</span></td>` : '<td></td>'}
+        </tr>`;
+      }).join('');
+      return `<div class="section">
+        <h2>${sec.icon} ${esc(sec.title)}</h2>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#FAF7F2">
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">Tarefa</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">Prazo</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">Prioridade</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    }
+    if (sec.isSchedule) {
+      const rows = sec.rows.map((r, idx) => `<tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #F0EAE0;font-weight:700;color:${esc(theme)};width:40px">${idx + 1}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #F0EAE0">${esc(r.name)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #F0EAE0;color:#8B7355;font-size:12px">${esc(r.notes)}</td>
+      </tr>`).join('');
+      return `<div class="section">
+        <h2>${sec.icon} ${esc(sec.title)}</h2>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#FAF7F2">
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">#</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">Etapa</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">Hora / Categoria</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    }
+    // Seção padrão (itens com quantidade)
+    const rows = sec.rows.map(r => `<tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #F0EAE0">${esc(r.name)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #F0EAE0;text-align:center;font-weight:700;font-size:1.1em;color:${esc(theme)}">${r.qty % 1 === 0 ? r.qty : r.qty.toFixed(2)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #F0EAE0;color:#8B7355">${esc(r.unit)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #F0EAE0;color:#8B7355;font-size:12px">${esc(r.notes)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #F0EAE0;text-align:center"><span style="display:inline-block;width:18px;height:18px;border:2px solid #ccc;border-radius:4px"></span></td>
+    </tr>`).join('');
+    return `<div class="section">
+      <h2>${sec.icon} ${esc(sec.title)}</h2>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#FAF7F2">
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">Item</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">Quantidade</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">Unidade</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">Observações</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;color:#8B7355;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E9DECB">Comprado?</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  };
+
+  const sectionsHtml = sections.length
+    ? sections.map(renderSection).join('')
+    : `<div style="text-align:center;padding:40px;color:#aaa;font-style:italic">Nenhum item de planejamento encontrado. Aplique um perfil ao evento para gerar a lista automaticamente.</div>`;
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Lista de Compras — ${esc(e.name)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #2C2416; background: #fff; font-size: 13px; }
+  .cover { background: ${esc(theme)}; color: #fff; padding: 36px 48px 28px; }
+  .cover h1 { font-size: 2rem; font-weight: 700; margin-bottom: 4px; }
+  .cover .sub { font-size: 1.1rem; opacity: .9; font-weight: 600; margin-bottom: 6px; }
+  .cover .meta { font-size: .92rem; opacity: .82; }
+  .cover .badge { display:inline-block;background:rgba(255,255,255,.22);border-radius:20px;padding:3px 14px;font-size:.82rem;margin-top:8px; }
+  .body { padding: 28px 48px; }
+  .intro { background: #FAF7F2; border: 1px solid #E9DECB; border-radius: 10px; padding: 16px 20px; margin-bottom: 24px; font-size: 13px; line-height: 1.7; color: #5C4A2A; }
+  .intro strong { color: #2C2416; }
+  .kpis { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 24px; }
+  .kpi { flex:1;min-width:110px;background:#FAF7F2;border:1px solid #E9DECB;border-radius:10px;padding:12px 16px; }
+  .kpi .label { font-size:.72rem;color:#8B7355;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px; }
+  .kpi .value { font-size:1.2rem;font-weight:700; }
+  .section { margin-bottom: 26px; }
+  .section h2 { font-size: .95rem; font-weight: 700; color: ${esc(theme)}; border-bottom: 2px solid ${esc(theme)}; padding-bottom: 5px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: .06em; }
+  .tip { background: #FFFBF0; border: 1px solid #F0E0A0; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 12px; color: #7A6020; }
+  .footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid #E9DECB; color: #aaa; font-size: 11px; text-align: center; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .no-print { display: none; }
+  }
+  .print-btn { position: fixed; bottom: 24px; right: 24px; background: ${esc(theme)}; color: #fff; border: none; border-radius: 50px; padding: 12px 24px; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+</style></head><body>
+<button class="print-btn no-print" onclick="window.print()">🖨️ Imprimir</button>
+<div class="cover">
+  <div class="sub">Lista de Compras para o Evento</div>
+  <h1>${esc(e.name)}</h1>
+  <div class="meta">${[e.type, eventDate, e.venue].filter(Boolean).join(' · ')}</div>
+  ${e.clientName ? `<div class="meta" style="margin-top:4px">Preparado para: <b>${esc(e.clientName)}</b></div>` : ''}
+  <span class="badge">${c.guestsTotal} convidados · ${c.confirmedPeople} confirmados</span>
+</div>
+<div class="body">
+  <div class="intro">
+    Olá, <strong>${esc(clientName)}</strong>! Este documento reúne tudo que precisa ser providenciado para o seu evento.
+    São <strong>${totalItems} itens</strong> organizados por categoria.
+    Use a coluna <em>Comprado?</em> para marcar o que já foi adquirido.
+  </div>
+  <div class="kpis">
+    <div class="kpi"><div class="label">Data do evento</div><div class="value" style="font-size:.95rem">${eventDate}</div></div>
+    <div class="kpi"><div class="label">Convidados</div><div class="value">${c.guestsTotal}</div></div>
+    <div class="kpi"><div class="label">Confirmados</div><div class="value" style="color:#2D7A4F">${c.confirmedPeople}</div></div>
+    ${c.adults > 0 ? `<div class="kpi"><div class="label">Adultos</div><div class="value">${c.adults}</div></div>` : ''}
+    ${c.kidsUnder10 > 0 ? `<div class="kpi"><div class="label">Crianças</div><div class="value">${c.kidsUnder10}</div></div>` : ''}
+    <div class="kpi"><div class="label">Total de itens</div><div class="value">${totalItems}</div></div>
+  </div>
+  <div class="tip">💡 <strong>Dica:</strong> Imprima esta lista e leve ao mercado ou ao fornecedor. Marque cada item conforme for comprando.</div>
+  ${sectionsHtml}
+  <div class="footer">Lista gerada em ${new Date().toLocaleString('pt-BR')} &nbsp;·&nbsp; ${esc(e.name)} &nbsp;·&nbsp; Radar Financeiro</div>
+</div>
+</body></html>`;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="lista-compras-${e.id}.html"`);
+  res.send(html);
+});
+
 // ---------- Importacao de Convidados ----------
 app.post('/api/events/:id/guests/import', auth, upload.single('file'), (req, res) => {
   const d = store.getData();
