@@ -2,13 +2,8 @@ services:
   - type: web
     name: radar-financeiro
     env: node
-    buildCommand: |
-      apt-get update -qq && \
-      apt-get install -y chromium fonts-liberation libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libxkbcommon0 --no-install-recommends -qq && \
-      npm install
+    buildCommand: npm install
     startCommand: npm start
     envVars:
-      - key: CHROME_PATH
-        value: /usr/bin/chromium
       - key: NODE_ENV
         value: production
