@@ -1226,9 +1226,9 @@
   PAGES.config = async function () {
     const s = await api('GET', '/settings');
     if (!state.configTab) state.configTab = 'geral';
-    const cfgTabs = [['geral', 'Geral'], ['perfis', 'Perfis de Eventos'], ['globais', 'Config. Globais']];
+    const cfgTabs = [['geral', 'Geral']];
     const tabsHtml = cfgTabs.map(([k, l]) => `<button class="btn ${k === state.configTab ? 'btn-primary' : 'btn-ghost'}" data-cfg-tab="${k}">${l}</button>`).join('');
-    $('#content').innerHTML = pageHeader('Configuracoes', 'Saldo inicial, seguranca, backup e perfis de eventos')
+    $('#content').innerHTML = pageHeader('Configuracoes', 'Saldo inicial, seguranca e backup')
       + `<div class="flex gap-1 flex-wrap mb-6">${tabsHtml}</div><div id="cfg-sub"></div>`;
     document.querySelectorAll('[data-cfg-tab]').forEach(b => b.addEventListener('click', () => { state.configTab = b.dataset.cfgTab; renderCfgSub(s); }));
     renderCfgSub(s);
@@ -1286,8 +1286,10 @@
     return;
     } // end geral
 
-    // ---- Aba: Perfis de Eventos ----
-    if (state.configTab === 'perfis') {
+  }; // end renderCfgSub
+
+  // ---- Perfis de Eventos (aba no módulo Eventos) ----
+  async function renderEvProfiles(box) {
     let profiles = [];
     try { profiles = await api('GET', '/event-profiles'); } catch (_) {}
     const PLAN_SECTIONS = [
@@ -1417,7 +1419,7 @@
       ${itemsHtml}`;
 
     // Eventos da aba perfis
-    if ($('#prof-sel')) $('#prof-sel').addEventListener('change', e => { state.profileId = e.target.value; state.profileSection = 'food'; renderCfgSub(s); });
+    if ($('#prof-sel')) $('#prof-sel').addEventListener('change', e => { state.profileId = e.target.value; state.profileSection = 'food'; renderEvProfiles(box); });
     if ($('#prof-new')) $('#prof-new').addEventListener('click', () => formModal('Novo perfil de evento', [
       { name: 'name', label: 'Nome do perfil', required: true, col: 'full', placeholder: 'Ex: Casamento 100 pessoas' },
       { name: 'description', label: 'Descrição', col: 'full' },
@@ -1425,14 +1427,14 @@
       { name: 'color', label: 'Cor (hex)', value: '#B9502C' }
     ], async v => {
       const p = await api('POST', '/event-profiles', v);
-      state.profileId = p.id; state.profileSection = 'food'; closeModal(); toast('Perfil criado', 'ok'); renderCfgSub(s);
+      state.profileId = p.id; state.profileSection = 'food'; closeModal(); toast('Perfil criado', 'ok'); renderEvProfiles(box);
     }));
     if ($('#prof-edit') && selProf) $('#prof-edit').addEventListener('click', () => formModal('Editar perfil', [
       { name: 'name', label: 'Nome', required: true, col: 'full', value: selProf.name },
       { name: 'description', label: 'Descrição', col: 'full', value: selProf.description || '' },
       { name: 'icon', label: 'Ícone (emoji)', value: selProf.icon || '🎉' },
       { name: 'color', label: 'Cor (hex)', value: selProf.color || '#B9502C' }
-    ], async v => { await api('PUT', '/event-profiles/' + selProf.id, v); closeModal(); toast('Salvo', 'ok'); renderCfgSub(s); }));
+    ], async v => { await api('PUT', '/event-profiles/' + selProf.id, v); closeModal(); toast('Salvo', 'ok'); renderEvProfiles(box); }));
     if ($('#prof-settings-edit') && selProf) $('#prof-settings-edit').addEventListener('click', () => {
       const ps = selProf.settings || {};
       formModal('Configurações do perfil', [
@@ -1446,18 +1448,18 @@
       ], async v => {
         const settings = { peoplePerTable: Number(v.peoplePerTable)||10, tableType: v.tableType||'Redonda', eventDurationHours: Number(v.eventDurationHours)||4, foodSafetyMargin: Number(v.foodSafetyMargin)||0.1, drinkSafetyMargin: Number(v.drinkSafetyMargin)||0.15, surplusPercent: Number(v.surplusPercent)||0.05, familySize: Number(v.familySize)||3 };
         await api('PUT', '/event-profiles/' + selProf.id, { settings });
-        closeModal(); toast('Configurações salvas', 'ok'); renderCfgSub(s);
+        closeModal(); toast('Configurações salvas', 'ok'); renderEvProfiles(box);
       });
     });
     if ($('#prof-dup') && selProf) $('#prof-dup').addEventListener('click', async () => {
       const p = await api('POST', '/event-profiles/' + selProf.id + '/duplicate', {});
-      state.profileId = p.id; toast('Perfil duplicado', 'ok'); renderCfgSub(s);
+      state.profileId = p.id; toast('Perfil duplicado', 'ok'); renderEvProfiles(box);
     });
     if ($('#prof-del') && selProf) $('#prof-del').addEventListener('click', () => confirmModal('Excluir perfil "' + selProf.name + '"?', async () => {
       await api('DELETE', '/event-profiles/' + selProf.id);
-      state.profileId = null; toast('Excluído', 'ok'); renderCfgSub(s);
+      state.profileId = null; toast('Excluído', 'ok'); renderEvProfiles(box);
     }));
-    document.querySelectorAll('[data-psec]').forEach(b => b.addEventListener('click', () => { state.profileSection = b.dataset.psec; renderCfgSub(s); }));
+    document.querySelectorAll('[data-psec]').forEach(b => b.addEventListener('click', () => { state.profileSection = b.dataset.psec; renderEvProfiles(box); }));
 
     // Adicionar item ao perfil
     if ($('#pi-add') && selProf) $('#pi-add').addEventListener('click', () => {
@@ -1529,14 +1531,14 @@
         if (!Array.isArray(updated[secKey])) updated[secKey] = [];
         updated[secKey].push(item);
         await api('PUT', '/event-profiles/' + selProf.id, { [secKey]: updated[secKey] });
-        closeModal(); toast('Item adicionado', 'ok'); renderCfgSub(s);
+        closeModal(); toast('Item adicionado', 'ok'); renderEvProfiles(box);
       });
     });
     document.querySelectorAll('[data-pi-del]').forEach(b => b.addEventListener('click', async () => {
       const secKey = state.profileSection;
       const updated = (selProf[secKey] || []).filter(x => x.id !== b.dataset.piDel);
       await api('PUT', '/event-profiles/' + selProf.id, { [secKey]: updated });
-      toast('Removido', 'ok'); renderCfgSub(s);
+      toast('Removido', 'ok'); renderEvProfiles(box);
     }));
     document.querySelectorAll('[data-pi-edit]').forEach(b => b.addEventListener('click', async () => {
       const secKey = state.profileSection;
@@ -1599,13 +1601,13 @@
           daysBeforeEvent: Number(v.daysBeforeEvent) || 0, estimatedValue: Number(v.estimatedValue) || 0
         }) : x);
         await api('PUT', '/event-profiles/' + selProf.id, { [secKey]: updated });
-        closeModal(); toast('Salvo', 'ok'); renderCfgSub(s);
+        closeModal(); toast('Salvo', 'ok'); renderEvProfiles(box);
       });
     }));
-    return;
-    } // end perfis
+  } // end renderEvProfiles
 
-    // ---- Aba: Configurações Globais de Eventos ----
+  // ---- Configurações Globais de Eventos (aba no módulo Eventos) ----
+  async function renderEvGlobals(box) {
     let gs = null;
     try { gs = await api('GET', '/event-global-settings'); } catch (_) {}
     if (!gs) gs = {};
@@ -1651,26 +1653,26 @@
         </div>
         <table><thead>${glThead}</thead><tbody>${glRows}</tbody></table>
       </div>`;
-    document.querySelectorAll('[data-gl-tab]').forEach(b => b.addEventListener('click', () => { state.globalListTab = b.dataset.glTab; renderCfgSub(s); }));
+    document.querySelectorAll('[data-gl-tab]').forEach(b => b.addEventListener('click', () => { state.globalListTab = b.dataset.glTab; renderEvGlobals(box); }));
     if ($('#gl-add')) $('#gl-add').addEventListener('click', () => {
       formModal('Adicionar — ' + curMeta.label, curMeta.fields, async v => {
         await api('POST', '/event-global-settings/' + curMeta.key, v);
-        closeModal(); toast('Adicionado', 'ok'); renderCfgSub(s);
+        closeModal(); toast('Adicionado', 'ok'); renderEvGlobals(box);
       });
     });
     document.querySelectorAll('[data-gl-del]').forEach(b => b.addEventListener('click', async () => {
       await api('DELETE', '/event-global-settings/' + curMeta.key + '/' + b.dataset.glDel);
-      toast('Removido', 'ok'); renderCfgSub(s);
+      toast('Removido', 'ok'); renderEvGlobals(box);
     }));
     document.querySelectorAll('[data-gl-edit]').forEach(b => b.addEventListener('click', () => {
       const item = curItems.find(x => x.id === b.dataset.glEdit); if (!item) return;
       const fields = curMeta.fields.map(f => Object.assign({}, f, { value: item[f.name] != null ? item[f.name] : (f.value || '') }));
       formModal('Editar — ' + curMeta.label, fields, async v => {
         await api('PUT', '/event-global-settings/' + curMeta.key + '/' + item.id, v);
-        closeModal(); toast('Salvo', 'ok'); renderCfgSub(s);
+        closeModal(); toast('Salvo', 'ok'); renderEvGlobals(box);
       });
     }));
-  };
+  }
 
   function emptyState(msg) { return `<div class="card p-10 text-center text-muted col-span-full">${esc(msg)}</div>`; }
 
@@ -2026,33 +2028,46 @@
     const list = await api('GET', '/events');
     const c = $('#content');
     if (!state.evId) {
-      if (!state.evFilter) state.evFilter = 'todos';
-      let arr = list.slice();
-      if (state.evFilter === 'meus') arr = arr.filter(x => x.owner !== 'Cliente');
-      if (state.evFilter === 'clientes') arr = arr.filter(x => x.owner === 'Cliente');
-      arr.sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999')));
+      if (!state.evListTab) state.evListTab = 'lista';
+      const evListTabs = [['lista', 'Eventos'], ['perfis', 'Perfis Inteligentes'], ['globais', 'Configurações Globais']];
+      const evListTabsHtml = evListTabs.map(([k, l]) => `<button class="btn ${k === state.evListTab ? 'btn-primary' : 'btn-ghost'}" data-evlisttab="${k}">${l}</button>`).join('');
       c.innerHTML = `
-        <div class="flex items-start justify-between gap-4 mb-8 flex-wrap">
+        <div class="flex items-start justify-between gap-4 mb-6 flex-wrap">
           <div>
             <h1 class="text-4xl md:text-5xl font-display mb-3">Eventos</h1>
-            <p class="text-muted max-w-md leading-relaxed">Os seus e os de clientes — orcamento, fornecedores, convidados e checklist, tudo com calma num so lugar.</p>
+            <p class="text-muted max-w-md leading-relaxed">Os seus e os de clientes — orçamento, fornecedores, convidados e checklist, tudo com calma num só lugar.</p>
           </div>
-          <button class="btn btn-primary" id="ne">+ Novo evento</button>
+          ${state.evListTab === 'lista' ? '<button class="btn btn-primary" id="ne">+ Novo evento</button>' : ''}
         </div>
-        <div class="flex items-center justify-between gap-3 mb-6 flex-wrap">
-          <div class="flex gap-2">
-            <button class="chip ${state.evFilter === 'todos' ? 'chip-active' : ''}" data-filt="todos">Todos · ${list.length}</button>
-            <button class="chip ${state.evFilter === 'meus' ? 'chip-active' : ''}" data-filt="meus">Meus</button>
-            <button class="chip ${state.evFilter === 'clientes' ? 'chip-active' : ''}" data-filt="clientes">De clientes</button>
+        <div class="flex gap-1 flex-wrap mb-6">${evListTabsHtml}</div>
+        <div id="ev-list-sub"></div>`;
+      document.querySelectorAll('[data-evlisttab]').forEach(b => b.addEventListener('click', () => { state.evListTab = b.dataset.evlisttab; go('eventos'); }));
+      if (state.evListTab === 'lista') {
+        if (!state.evFilter) state.evFilter = 'todos';
+        let arr = list.slice();
+        if (state.evFilter === 'meus') arr = arr.filter(x => x.owner !== 'Cliente');
+        if (state.evFilter === 'clientes') arr = arr.filter(x => x.owner === 'Cliente');
+        arr.sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999')));
+        $('#ev-list-sub').innerHTML = `
+          <div class="flex items-center justify-between gap-3 mb-6 flex-wrap">
+            <div class="flex gap-2">
+              <button class="chip ${state.evFilter === 'todos' ? 'chip-active' : ''}" data-filt="todos">Todos · ${list.length}</button>
+              <button class="chip ${state.evFilter === 'meus' ? 'chip-active' : ''}" data-filt="meus">Meus</button>
+              <button class="chip ${state.evFilter === 'clientes' ? 'chip-active' : ''}" data-filt="clientes">De clientes</button>
+            </div>
+            <span class="text-sm text-muted">Ordenar por data ↓</span>
           </div>
-          <span class="text-sm text-muted">Ordenar por data ↓</span>
-        </div>
-        ${arr.length ? `<div class="grid md:grid-cols-2 gap-6 mb-6">${arr.map(evCard).join('')}</div>` : ''}
-        <div class="add-card" id="ne2">+ &nbsp; Adicionar um novo evento</div>`;
-      $('#ne').addEventListener('click', newEvent);
-      $('#ne2').addEventListener('click', newEvent);
-      document.querySelectorAll('[data-filt]').forEach(b => b.addEventListener('click', () => { state.evFilter = b.dataset.filt; go('eventos'); }));
-      document.querySelectorAll('[data-ev]').forEach(el => el.addEventListener('click', () => { state.evId = el.dataset.ev; state.evTab = 'info'; go('eventos'); }));
+          ${arr.length ? `<div class="grid md:grid-cols-2 gap-6 mb-6">${arr.map(evCard).join('')}</div>` : ''}
+          <div class="add-card" id="ne2">+ &nbsp; Adicionar um novo evento</div>`;
+        if ($('#ne')) $('#ne').addEventListener('click', newEvent);
+        if ($('#ne2')) $('#ne2').addEventListener('click', newEvent);
+        document.querySelectorAll('[data-filt]').forEach(b => b.addEventListener('click', () => { state.evFilter = b.dataset.filt; go('eventos'); }));
+        document.querySelectorAll('[data-ev]').forEach(el => el.addEventListener('click', () => { state.evId = el.dataset.ev; state.evTab = 'info'; go('eventos'); }));
+      } else if (state.evListTab === 'perfis') {
+        await renderEvProfiles($('#ev-list-sub'));
+      } else if (state.evListTab === 'globais') {
+        await renderEvGlobals($('#ev-list-sub'));
+      }
       return;
     }
     const full = await api('GET', '/events/' + state.evId);
