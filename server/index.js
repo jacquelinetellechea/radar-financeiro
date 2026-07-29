@@ -432,6 +432,50 @@ app.post('/api/projects/:id/fund', (req, res) => {
 
 // ---------- Eventos ----------
 app.get('/api/events', (req, res) => ok(res, store.getData().events.map(evmod.eventSummary)));
+
+// Modelo de planilha para download (deve vir ANTES de /api/events/:id para nao ser interceptado)
+app.get('/api/events/template/:section', (req, res) => {
+  const XLSX = require('xlsx');
+  const section = req.params.section;
+  const templates = {
+    checklist: {
+      filename: 'modelo-checklist.xlsx',
+      headers: ['Tarefa', 'Prazo (AAAA-MM-DD)', 'Status (Pendente/Concluido)', 'Prioridade (Alta/Media/Baixa)'],
+      sample: [['Confirmar buffet', '2026-09-01', 'Pendente', 'Alta'], ['Enviar convites', '2026-08-15', 'Pendente', 'Media']]
+    },
+    cronograma: {
+      filename: 'modelo-cronograma.xlsx',
+      headers: ['Etapa', 'Hora (HH:MM)', 'Duracao (min)', 'Responsavel', 'Observacoes'],
+      sample: [['Chegada dos convidados', '19:00', '30', 'Equipe', ''], ['Entrada da aniversariante', '20:00', '15', 'Cerimonialista', '']]
+    },
+    decoracao: {
+      filename: 'modelo-decoracao.xlsx',
+      headers: ['Item', 'Unidade', 'Quantidade', 'Observacoes'],
+      sample: [['Baloes', 'unidade', '100', 'Rosa e dourado'], ['Centro de mesa', 'unidade', '15', '1 por mesa']]
+    },
+    materiais: {
+      filename: 'modelo-materiais.xlsx',
+      headers: ['Item', 'Unidade', 'Quantidade', 'Observacoes'],
+      sample: [['Guardanapos', 'pacote', '10', ''], ['Pratos descartaveis', 'unidade', '100', '']]
+    },
+    fornecedores: {
+      filename: 'modelo-fornecedores.xlsx',
+      headers: ['Fornecedor', 'Categoria', 'Contato', 'Valor Orcado (R$)', 'Valor Fechado (R$)', 'Ja Pago (R$)', 'Vencimento (AAAA-MM-DD)', 'Status (Orcando/Fechado/Pago)', 'Observacoes'],
+      sample: [['Buffet Estrela', 'Alimentacao', '(11) 99999-0001', '8000', '8000', '4000', '2026-09-01', 'Fechado', ''], ['DJ Som & Luz', 'Musica/DJ', '(11) 99999-0002', '3000', '2800', '0', '', 'Orcando', '']]
+    }
+  };
+  const tpl = templates[section];
+  if (!tpl) return bad(res, 'Secao invalida', 404);
+  const ws = XLSX.utils.aoa_to_sheet([tpl.headers, ...tpl.sample]);
+  ws['!cols'] = tpl.headers.map(() => ({ wch: 22 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Modelo');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${tpl.filename}"`);
+  res.send(buf);
+});
+
 app.get('/api/events/:id', (req, res) => {
   const e = store.getData().events.find(x => x.id === req.params.id);
   if (!e) return bad(res, 'Evento nao encontrado', 404);
@@ -1095,50 +1139,6 @@ function readSpreadsheet(file) {
 }
 const normH = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
 const pickH = (row, keys) => { for (const k of Object.keys(row)) { if (keys.includes(normH(k))) return String(row[k] || '').trim(); } return ''; };
-
-// Modelo de planilha para download
-app.get('/api/events/template/:section', (req, res) => {
-  const XLSX = require('xlsx');
-  const section = req.params.section;
-  const templates = {
-    checklist: {
-      filename: 'modelo-checklist.xlsx',
-      headers: ['Tarefa', 'Prazo (AAAA-MM-DD)', 'Status (Pendente/Concluido)', 'Prioridade (Alta/Media/Baixa)'],
-      sample: [['Confirmar buffet', '2026-09-01', 'Pendente', 'Alta'], ['Enviar convites', '2026-08-15', 'Pendente', 'Media']]
-    },
-    cronograma: {
-      filename: 'modelo-cronograma.xlsx',
-      headers: ['Etapa', 'Hora (HH:MM)', 'Duracao (min)', 'Responsavel', 'Observacoes'],
-      sample: [['Chegada dos convidados', '19:00', '30', 'Equipe', ''], ['Entrada da aniversariante', '20:00', '15', 'Cerimonialista', '']]
-    },
-    decoracao: {
-      filename: 'modelo-decoracao.xlsx',
-      headers: ['Item', 'Unidade', 'Quantidade', 'Observacoes'],
-      sample: [['Baloes', 'unidade', '100', 'Rosa e dourado'], ['Centro de mesa', 'unidade', '15', '1 por mesa']]
-    },
-    materiais: {
-      filename: 'modelo-materiais.xlsx',
-      headers: ['Item', 'Unidade', 'Quantidade', 'Observacoes'],
-      sample: [['Guardanapos', 'pacote', '10', ''], ['Pratos descartaveis', 'unidade', '100', '']]
-    },
-    fornecedores: {
-      filename: 'modelo-fornecedores.xlsx',
-      headers: ['Fornecedor', 'Categoria', 'Contato', 'Valor Orcado (R$)', 'Valor Fechado (R$)', 'Ja Pago (R$)', 'Vencimento (AAAA-MM-DD)', 'Status (Orcando/Fechado/Pago)', 'Observacoes'],
-      sample: [['Buffet Estrela', 'Alimentacao', '(11) 99999-0001', '8000', '8000', '4000', '2026-09-01', 'Fechado', ''], ['DJ Som & Luz', 'Musica/DJ', '(11) 99999-0002', '3000', '2800', '0', '', 'Orcando', '']]
-    }
-  };
-  const tpl = templates[section];
-  if (!tpl) return bad(res, 'Secao invalida', 404);
-  const ws = XLSX.utils.aoa_to_sheet([tpl.headers, ...tpl.sample]);
-  // Largura das colunas
-  ws['!cols'] = tpl.headers.map(() => ({ wch: 22 }));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Modelo');
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${tpl.filename}"`);
-  res.send(buf);
-});
 
 // Importar Checklist
 app.post('/api/events/:id/checklist/import', auth, upload.single('file'), (req, res) => {
