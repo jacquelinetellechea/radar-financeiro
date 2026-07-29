@@ -1392,12 +1392,25 @@
           <div><span class="text-muted">Tam. família:</span> <b>${ps.familySize || 3}</b></div>
         </div>
       </div>`;
+      // Seções que suportam importação de planilha
+      const IMPORT_SECTIONS = {
+        checklist:      { tpl: 'checklist',     label: 'tarefa(s)' },
+        schedule:       { tpl: 'cronograma',    label: 'etapa(s)' },
+        decor:          { tpl: 'decoracao',     label: 'item(ns) de decoração' },
+        materials:      { tpl: 'materiais',     label: 'material(is)' },
+        defaultVendors: { tpl: 'fornecedores',  label: 'fornecedor(es)' }
+      };
+      const importInfo = IMPORT_SECTIONS[secKey];
+      const importBtns = importInfo ? `
+        <a class="btn btn-ghost" style="font-size:12px" href="/api/events/template/${importInfo.tpl}" download title="Baixar modelo XLSX">📊 Modelo</a>
+        <label class="btn btn-ghost cursor-pointer" style="font-size:12px" title="Importar CSV ou XLSX">📂 Importar<input type="file" id="pi-import-file" data-pi-import-sec="${secKey}" data-pi-import-label="${importInfo.label}" accept=".csv,.xlsx,.xls" style="display:none"></label>
+      ` : '';
       itemsHtml = `
         ${settingsHtml}
         <div class="card overflow-hidden mt-2">
           <div class="flex justify-between items-center p-4 flex-wrap gap-3">
             <div class="flex gap-2 flex-wrap">${secTabs}</div>
-            <button class="btn btn-primary" id="pi-add">+ Item</button>
+            <div class="flex gap-2 flex-wrap">${importBtns}<button class="btn btn-primary" id="pi-add">+ Item</button></div>
           </div>
           <table><thead>${thead}</thead><tbody>${rows}</tbody></table>
         </div>`;
@@ -1460,6 +1473,25 @@
       state.profileId = null; toast('Excluído', 'ok'); renderEvProfiles(box);
     }));
     document.querySelectorAll('[data-psec]').forEach(b => b.addEventListener('click', () => { state.profileSection = b.dataset.psec; renderEvProfiles(box); }));
+
+    // Importar planilha para o perfil
+    if ($('#pi-import-file') && selProf) $('#pi-import-file').addEventListener('change', async function () {
+      const file = this.files[0]; if (!file) return;
+      const secKey = this.dataset.piImportSec;
+      const successLabel = this.dataset.piImportLabel || 'item(ns)';
+      const fd = new FormData(); fd.append('file', file);
+      try {
+        const token = localStorage.getItem('rf_token') || '';
+        const r = await fetch('/api/event-profiles/' + selProf.id + '/' + secKey + '/import', {
+          method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd
+        });
+        const j = await r.json();
+        if (!r.ok) { toast(j.error || 'Erro ao importar', 'err'); return; }
+        toast((j.added || 0) + ' ' + successLabel + ' importado(s)!', 'ok');
+        renderEvProfiles(box);
+      } catch (err) { toast('Erro: ' + err.message, 'err'); }
+      this.value = '';
+    });
 
     // Adicionar item ao perfil
     if ($('#pi-add') && selProf) $('#pi-add').addEventListener('click', () => {
@@ -2216,11 +2248,7 @@
     return `<div class="card overflow-hidden">
       <div class="flex justify-between items-center p-4 flex-wrap gap-2">
         <h3 class="font-semibold">Fornecedores e orçamento</h3>
-        <div class="flex gap-2 flex-wrap">
-          <a class="btn btn-ghost" style="font-size:12px" href="/api/events/template/fornecedores" download title="Baixar modelo XLSX">📊 Modelo</a>
-          <label class="btn btn-ghost cursor-pointer" style="font-size:12px" title="Importar CSV ou XLSX">📂 Importar<input type="file" id="v-import-file" accept=".csv,.xlsx,.xls" style="display:none"></label>
-          <button class="btn btn-primary" id="v-add">+ Fornecedor</button>
-        </div>
+        <button class="btn btn-primary" id="v-add">+ Fornecedor</button>
       </div>
       <table><thead><tr><th>Fornecedor</th><th>Categoria</th><th>Orçado</th><th>Fechado</th><th>Pago</th><th>A pagar</th><th>Vencimento</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       <p class="text-xs text-muted p-4">💰 = registrar pagamento (com opção de lançar no Fluxo de Caixa do Radar)</p>
@@ -2273,11 +2301,7 @@
     return `<div class="card overflow-hidden">
       <div class="flex justify-between items-center p-4 flex-wrap gap-2">
         <h3 class="font-semibold">Checklist</h3>
-        <div class="flex gap-2 flex-wrap">
-          <a class="btn btn-ghost" style="font-size:12px" href="/api/events/template/checklist" download title="Baixar modelo XLSX">📊 Modelo</a>
-          <label class="btn btn-ghost cursor-pointer" style="font-size:12px" title="Importar CSV ou XLSX">📂 Importar<input type="file" id="cl-import-file" accept=".csv,.xlsx,.xls" style="display:none"></label>
-          <button class="btn btn-primary" id="c-add">+ Tarefa</button>
-        </div>
+        <button class="btn btn-primary" id="c-add">+ Tarefa</button>
       </div>
       <table><thead><tr><th>Tarefa</th><th>Prazo</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
@@ -2326,11 +2350,7 @@
     return `<div class="card overflow-hidden">
       <div class="flex justify-between items-center p-4 flex-wrap gap-2">
         <h3 class="font-semibold">Cronograma</h3>
-        <div class="flex gap-2 flex-wrap">
-          <a class="btn btn-ghost" style="font-size:12px" href="/api/events/template/cronograma" download title="Baixar modelo XLSX">📊 Modelo</a>
-          <label class="btn btn-ghost cursor-pointer" style="font-size:12px" title="Importar CSV ou XLSX">📂 Importar<input type="file" id="sc-import-file" accept=".csv,.xlsx,.xls" style="display:none"></label>
-          <button class="btn btn-primary" id="sched-add">+ Etapa</button>
-        </div>
+        <button class="btn btn-primary" id="sched-add">+ Etapa</button>
       </div>
       <table><thead><tr><th>Etapa</th><th>Categoria</th><th>Data prevista</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
@@ -2413,10 +2433,6 @@
           </div>
           <!-- Ações -->
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            ${(planKey === 'planDecor' || planKey === 'planMaterials') ? `
-              <a class="btn btn-ghost" style="font-size:12px" href="/api/events/template/${planKey === 'planDecor' ? 'decoracao' : 'materiais'}" download title="Baixar modelo XLSX">📊 Modelo</a>
-              <label class="btn btn-ghost cursor-pointer" style="font-size:12px" title="Importar CSV ou XLSX">📂 Importar<input type="file" id="plan-import-file" data-plan-import-key="${planKey}" accept=".csv,.xlsx,.xls" style="display:none"></label>
-            ` : ''}
             <button class="btn btn-primary" id="plan-add-item" data-plan-key="${planKey}" style="font-size:13px">+ Item</button>
             <button class="btn btn-ghost" id="plan-save-all" data-plan-key="${planKey}" style="font-size:13px">💾 Salvar</button>
           </div>
@@ -2575,30 +2591,6 @@
     }));
     document.querySelectorAll('[data-sched-del]').forEach(b => b.addEventListener('click', () => { e.schedule = (e.schedule || []).filter(x => x.id !== b.dataset.schedDel); saveEv(); }));
 
-    // ---- Importação de planilha ----
-    // Helper genérico de importação
-    async function importSpreadsheet(fileInput, endpoint, successMsg) {
-      const file = fileInput.files[0]; if (!file) return;
-      const fd = new FormData(); fd.append('file', file);
-      try {
-        const token = localStorage.getItem('rf_token') || '';
-        const r = await fetch('/api/events/' + e.id + '/' + endpoint, { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd });
-        const j = await r.json();
-        if (!r.ok) { toast(j.error || 'Erro ao importar', 'err'); return; }
-        toast((j.added || 0) + ' ' + successMsg, 'ok');
-        const full = await api('GET', '/events/' + e.id);
-        state.ev = full.event;
-        renderEvSub(full.computed);
-      } catch (err) { toast('Erro: ' + err.message, 'err'); }
-      fileInput.value = '';
-    }
-    // Fornecedores
-    if ($('#v-import-file')) $('#v-import-file').addEventListener('change', function () { importSpreadsheet(this, 'vendors/import', 'fornecedor(es) importado(s)!'); });
-    // Checklist
-    if ($('#cl-import-file')) $('#cl-import-file').addEventListener('change', function () { importSpreadsheet(this, 'checklist/import', 'tarefa(s) importada(s)!'); });
-    // Cronograma
-    if ($('#sc-import-file')) $('#sc-import-file').addEventListener('change', function () { importSpreadsheet(this, 'schedule/import', 'etapa(s) importada(s)!'); });
-
     // Planejamento (Alimentacao, Bebidas, Decoracao, Materiais, Equipe)
     const planKey = { alimentacao: 'planFood', bebidas: 'planDrinks', decoracao: 'planDecor', materiais: 'planMaterials', equipe: 'planTeam' }[state.evTab];
     if (planKey) {
@@ -2685,13 +2677,6 @@
             renderEvSub(result.computed);
           } catch (err) { toast('Erro: ' + err.message, 'err'); }
         });
-      });
-      // Importar planilha (Decoração / Materiais)
-      if ($('#plan-import-file')) $('#plan-import-file').addEventListener('change', function () {
-        const key = this.dataset.planImportKey;
-        const ep = key === 'planDecor' ? 'decor/import' : 'materials/import';
-        const msg = key === 'planDecor' ? 'item(ns) de decoração importado(s)!' : 'material(is) importado(s)!';
-        importSpreadsheet(this, ep, msg);
       });
       // Adicionar item manualmente
       if ($('#plan-add-item')) $('#plan-add-item').addEventListener('click', () => {

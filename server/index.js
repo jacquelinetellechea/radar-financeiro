@@ -727,6 +727,68 @@ app.get('/api/event-profiles/:id/suggest', auth, (req, res) => {
   ok(res, epmod.calcSuggestions(profile, adults, children59, childrenUnder5, extraHours, tables));
 });
 
+// ---------- Importação de Planilha para Perfis Inteligentes ----------
+// Mapeamento de chave da seção para o parser correto
+const PROFILE_IMPORT_SECTIONS = {
+  checklist:      (rows) => rows.map(row => ({
+    id: store.id(), active: true,
+    text: pickH(row, ['tarefa','task','item','descricao','description','nome','name']) || pickH(row, [normH(Object.keys(row)[0])]),
+    category: pickH(row, ['categoria','category']) || '',
+    daysBeforeEvent: Number(pickH(row, ['diasantes','daysbeforeevent','dias','days'])) || 30,
+    priority: ({'alta':'Alta','high':'Alta','media':'Media','medium':'Media','baixa':'Baixa','low':'Baixa'})[normH(pickH(row, ['prioridade','priority','prio']))] || 'Media'
+  })).filter(i => i.text),
+  schedule:       (rows) => rows.map(row => ({
+    id: store.id(), active: true,
+    text: pickH(row, ['etapa','step','atividade','activity','item','descricao','nome','name']) || pickH(row, [normH(Object.keys(row)[0])]),
+    category: pickH(row, ['categoria','category']) || '',
+    daysBeforeEvent: Number(pickH(row, ['diasantes','daysbeforeevent','dias','days'])) || 30,
+    time: pickH(row, ['hora','horario','time','inicio','start']) || '',
+    duration: pickH(row, ['duracao','duration','tempo','minutos','minutes']) || '',
+    responsible: pickH(row, ['responsavel','responsible']) || ''
+  })).filter(i => i.text),
+  decor:          (rows) => rows.map(row => ({
+    id: store.id(), active: true,
+    name: pickH(row, ['item','nome','name','descricao','description']) || pickH(row, [normH(Object.keys(row)[0])]),
+    unit: pickH(row, ['unidade','unit','un']) || 'unidade',
+    formulaType: 'fixed',
+    formulaFactor: Number(pickH(row, ['quantidade','qty','qtd','quantity'])) || 1,
+    formulaN: 1,
+    notes: pickH(row, ['observacoes','obs','notes','nota']) || ''
+  })).filter(i => i.name),
+  materials:      (rows) => rows.map(row => ({
+    id: store.id(), active: true,
+    name: pickH(row, ['item','nome','name','descricao','description','material']) || pickH(row, [normH(Object.keys(row)[0])]),
+    unit: pickH(row, ['unidade','unit','un']) || 'unidade',
+    formulaType: 'fixed',
+    formulaFactor: Number(pickH(row, ['quantidade','qty','qtd','quantity'])) || 1,
+    formulaN: 1,
+    notes: pickH(row, ['observacoes','obs','notes','nota']) || ''
+  })).filter(i => i.name),
+  defaultVendors: (rows) => rows.map(row => ({
+    id: store.id(), active: true,
+    name: pickH(row, ['fornecedor','vendor','nome','name','empresa','company']) || pickH(row, [normH(Object.keys(row)[0])]),
+    type: pickH(row, ['tipo','type','categoria','category']) || 'Outros',
+    notes: pickH(row, ['observacoes','obs','notes','nota']) || ''
+  })).filter(i => i.name)
+};
+
+app.post('/api/event-profiles/:id/:section/import', auth, upload.single('file'), (req, res) => {
+  const d = store.getData();
+  const profile = d.eventProfiles.find(p => p.id === req.params.id);
+  if (!profile) return bad(res, 'Perfil nao encontrado', 404);
+  const section = req.params.section;
+  const parser = PROFILE_IMPORT_SECTIONS[section];
+  if (!parser) return bad(res, 'Secao invalida para importacao', 400);
+  if (!req.file) return bad(res, 'Nenhum arquivo enviado.');
+  let rows;
+  try { rows = readSpreadsheet(req.file); } catch (err) { return bad(res, err.message); }
+  const items = parser(rows);
+  if (!Array.isArray(profile[section])) profile[section] = [];
+  profile[section].push(...items);
+  store.scheduleBackup();
+  ok(res, { added: items.length, total: profile[section].length });
+});
+
 // ---------- Configurações Globais de Eventos ----------
 app.get('/api/event-global-settings', auth, (req, res) => {
   ensureDefaultProfiles();
