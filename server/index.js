@@ -636,6 +636,153 @@ app.post('/api/import/commit', (req, res) => {
   ok(res, { created });
 });
 
+// ---------- Relatorio PDF do Evento ----------
+app.get('/api/events/:id/report', auth, (req, res) => {
+  const e = store.getData().events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  const c = evmod.computeEvent(e);
+  const fmt = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const dbr = s => s ? s.split('-').reverse().join('/') : '—';
+  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const theme = e.themeColor || '#B9502C';
+  const statusColor = { Planejamento: '#8B7355', Confirmado: '#2D7A4F', Realizado: '#1A5C3A', Cancelado: '#C0392B' };
+  const sColor = statusColor[e.status] || '#8B7355';
+
+  // Fornecedores
+  const vendorRows = (e.vendors || []).map(v => {
+    const agreed = Number(v.agreed) || Number(v.quoted) || 0;
+    const rest = Math.max(0, agreed - (Number(v.paid) || 0));
+    return `<tr><td>${esc(v.name)}</td><td>${esc(v.category || '—')}</td><td>${fmt(v.quoted)}</td><td>${fmt(agreed)}</td><td>${fmt(v.paid)}</td><td>${fmt(rest)}</td><td>${dbr(v.dueDate)}</td></tr>`;
+  }).join('');
+
+  // Convidados
+  const guestRows = (e.guests || []).map(g => {
+    const sc = { Confirmado: '#2D7A4F', Recusado: '#C0392B', Pendente: '#8B7355' }[g.status] || '#8B7355';
+    return `<tr><td>${esc(g.name)}</td><td>${esc(g.group || '—')}</td><td>${esc(g.contact || '—')}</td><td style="color:${sc};font-weight:600">${esc(g.status || 'Pendente')}</td><td>${g.age != null && g.age !== '' ? g.age + ' anos' : '—'}</td></tr>`;
+  }).join('');
+
+  // Checklist
+  const checkRows = (e.checklist || []).map(i => {
+    const done = i.status === 'Concluido';
+    return `<tr><td style="color:${done ? '#2D7A4F' : '#8B7355'}">${done ? '✓' : '○'}</td><td style="text-decoration:${done ? 'line-through' : 'none'};color:${done ? '#999' : 'inherit'}">${esc(i.text)}</td><td>${dbr(i.dueDate)}</td><td style="color:${done ? '#2D7A4F' : '#8B7355'}">${esc(i.status || 'Pendente')}</td></tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Relatorio - ${esc(e.name)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #2C2416; background: #fff; font-size: 13px; }
+  .cover { background: ${esc(theme)}; color: #fff; padding: 40px 48px 32px; }
+  .cover h1 { font-size: 2.4rem; font-weight: 700; margin-bottom: 6px; }
+  .cover .meta { font-size: 1rem; opacity: .88; }
+  .cover .badge { display: inline-block; background: rgba(255,255,255,.22); border-radius: 20px; padding: 3px 14px; font-size: .85rem; margin-top: 10px; }
+  .body { padding: 32px 48px; }
+  .section { margin-bottom: 28px; }
+  .section h2 { font-size: 1rem; font-weight: 700; color: ${esc(theme)}; border-bottom: 2px solid ${esc(theme)}; padding-bottom: 4px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  .kpis { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  .kpi { flex: 1; min-width: 120px; background: #FAF7F2; border: 1px solid #E9DECB; border-radius: 10px; padding: 14px 16px; }
+  .kpi .label { font-size: .75rem; color: #8B7355; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+  .kpi .value { font-size: 1.25rem; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #FAF7F2; text-align: left; padding: 7px 10px; font-weight: 600; color: #8B7355; text-transform: uppercase; font-size: .72rem; letter-spacing: .04em; border-bottom: 1px solid #E9DECB; }
+  td { padding: 7px 10px; border-bottom: 1px solid #F0EAE0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .empty { color: #aaa; font-style: italic; padding: 12px 10px; }
+  .notes { background: #FAF7F2; border-left: 4px solid ${esc(theme)}; padding: 12px 16px; border-radius: 0 8px 8px 0; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+  .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #E9DECB; color: #aaa; font-size: 11px; text-align: center; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style></head><body>
+<div class="cover">
+  <h1>${esc(e.name)}</h1>
+  <div class="meta">${[e.type, e.date ? dbr(e.date) + (e.time ? ' ' + e.time : '') : '', e.venue].filter(Boolean).join(' · ')}</div>
+  ${e.owner === 'Cliente' && e.clientName ? `<div class="meta" style="margin-top:6px">Cliente: <b>${esc(e.clientName)}</b>${e.clientContact ? ' · ' + esc(e.clientContact) : ''}</div>` : ''}
+  <span class="badge" style="background:${esc(sColor)}">${esc(e.status)}</span>
+</div>
+<div class="body">
+  <div class="kpis">
+    <div class="kpi"><div class="label">Orcamento</div><div class="value">${fmt(c.budget)}</div></div>
+    <div class="kpi"><div class="label">Contratado</div><div class="value">${fmt(c.contracted)}</div></div>
+    <div class="kpi"><div class="label">Pago</div><div class="value" style="color:#2D7A4F">${fmt(c.paid)}</div></div>
+    <div class="kpi"><div class="label">A pagar</div><div class="value" style="color:${c.toPay > 0 ? '#C0392B' : '#2D7A4F'}">${fmt(c.toPay)}</div></div>
+    <div class="kpi"><div class="label">Convidados</div><div class="value">${c.confirmedPeople} / ${c.guestsTotal}</div></div>
+    <div class="kpi"><div class="label">Checklist</div><div class="value">${c.checkPercent}%</div></div>
+    ${c.daysLeft != null ? `<div class="kpi"><div class="label">Dias restantes</div><div class="value">${c.daysLeft}</div></div>` : ''}
+  </div>
+
+  ${(e.vendors || []).length ? `<div class="section"><h2>Fornecedores</h2>
+  <table><thead><tr><th>Fornecedor</th><th>Categoria</th><th>Orcado</th><th>Fechado</th><th>Pago</th><th>A pagar</th><th>Vencimento</th></tr></thead>
+  <tbody>${vendorRows}</tbody></table></div>` : ''}
+
+  ${(e.guests || []).length ? `<div class="section"><h2>Lista de Convidados (${c.guestsTotal} total · ${c.confirmedPeople} confirmados · ${c.pendingGuests} pendentes · ${c.refusedGuests} recusados)</h2>
+  <table><thead><tr><th>Nome</th><th>Grupo</th><th>Contato</th><th>Status</th><th>Idade</th></tr></thead>
+  <tbody>${guestRows}</tbody></table></div>` : ''}
+
+  ${(e.checklist || []).length ? `<div class="section"><h2>Checklist (${c.checkPercent}% concluido)</h2>
+  <table><thead><tr><th>✓</th><th>Tarefa</th><th>Prazo</th><th>Status</th></tr></thead>
+  <tbody>${checkRows}</tbody></table></div>` : ''}
+
+  ${e.notes ? `<div class="section"><h2>Observacoes</h2><div class="notes">${esc(e.notes)}</div></div>` : ''}
+
+  ${e.owner === 'Cliente' && c.feeTotal > 0 ? `<div class="section"><h2>Honorarios</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="label">Total combinado</div><div class="value">${fmt(c.feeTotal)}</div></div>
+    <div class="kpi"><div class="label">Recebido</div><div class="value" style="color:#2D7A4F">${fmt(c.feeReceived)}</div></div>
+    <div class="kpi"><div class="label">A receber</div><div class="value" style="color:${c.feeToReceive > 0 ? '#C0392B' : '#2D7A4F'}">${fmt(c.feeToReceive)}</div></div>
+  </div></div>` : ''}
+
+  <div class="footer">Relatorio gerado em ${new Date().toLocaleString('pt-BR')} · Radar Financeiro</div>
+</div>
+</body></html>`;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="relatorio-${e.id}.html"`);
+  res.send(html);
+});
+
+// ---------- Importacao de Convidados ----------
+app.post('/api/events/:id/guests/import', auth, upload.single('file'), (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  if (!req.file) return bad(res, 'Nenhum arquivo enviado.');
+  const name = (req.file.originalname || '').toLowerCase();
+  const XLSX = require('xlsx');
+  let rows = [];
+  try {
+    if (name.endsWith('.csv')) {
+      const text = req.file.buffer.toString('utf8');
+      const wb = XLSX.read(text, { type: 'string' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    } else {
+      return bad(res, 'Formato nao suportado. Use CSV ou XLSX.');
+    }
+  } catch (err) {
+    return bad(res, 'Falha ao ler arquivo: ' + err.message);
+  }
+  // Normaliza cabecalhos: aceita variantes em pt/en
+  const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const pick = (row, keys) => { for (const k of Object.keys(row)) { if (keys.includes(norm(k))) return String(row[k] || '').trim(); } return ''; };
+  let added = 0;
+  if (!e.guests) e.guests = [];
+  rows.forEach(row => {
+    const gname = pick(row, ['nome', 'name', 'convidado', 'guest']) || pick(row, Object.keys(row).slice(0, 1));
+    if (!gname) return;
+    const group = pick(row, ['grupo', 'group', 'familia', 'family']);
+    const contact = pick(row, ['contato', 'contact', 'telefone', 'phone', 'email', 'whatsapp']);
+    const status = pick(row, ['status', 'confirmacao', 'confirmation', 'rsvp']);
+    const age = pick(row, ['idade', 'age', 'anos']);
+    const statusMap = { confirmado: 'Confirmado', confirmed: 'Confirmado', sim: 'Confirmado', yes: 'Confirmado', recusado: 'Recusado', refused: 'Recusado', nao: 'Recusado', no: 'Recusado' };
+    const statusNorm = statusMap[norm(status)] || 'Pendente';
+    e.guests.push({ id: store.id(), name: gname, group: group || '', contact: contact || '', status: statusNorm, age: age !== '' ? age : '', companions: 0 });
+    added++;
+  });
+  store.scheduleBackup();
+  ok(res, { added, total: e.guests.length });
+});
+
 // ---------- Backup / Exportacao ----------
 app.get('/api/backup/export', (req, res) => {
   const d = store.getData();

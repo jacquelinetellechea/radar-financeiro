@@ -1627,7 +1627,7 @@
     if (state.evTab === 'honorarios' && e.owner !== 'Cliente') state.evTab = 'info';
     const ac = { high: 'border-bad/40 bg-bad/10 text-bad', medium: 'border-warn/40 bg-warn/10 text-warn', low: 'border-line bg-panel2' };
     const evMeta = [e.type, e.date ? dbr(e.date) + (e.time ? ' ' + e.time : '') : '', e.venue].filter(Boolean).join(' · ');
-    const evActions = `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-edit">✏️ Editar</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`;
+    const evActions = `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-edit">✏️ Editar</button> <button class="btn btn-ghost" id="ev-report" title="Baixar relatorio HTML">📄 Relatório</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`;
     const evTheme = e.themeColor || '#B9502C';
     const evHeader = e.coverUrl
       ? `<div class="flex justify-end gap-2 mb-3">${evActions}</div>
@@ -1660,6 +1660,20 @@
     $('#ev-back').addEventListener('click', () => { state.evId = null; go('eventos'); });
     $('#ev-edit').addEventListener('click', () => evQuickEdit(e));
     $('#ev-del').addEventListener('click', () => confirmModal('Excluir o evento "' + e.name + '" e tudo dele?', async () => { await api('DELETE', '/events/' + e.id); state.evId = null; toast('Excluido', 'ok'); go('eventos'); }));
+    $('#ev-report').addEventListener('click', () => {
+      const token = localStorage.getItem('rf_token') || '';
+      const url = '/api/events/' + e.id + '/report';
+      // abre em nova aba com token via fetch + blob
+      fetch(url, { headers: { Authorization: 'Bearer ' + token } })
+        .then(r => r.blob())
+        .then(blob => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'relatorio-' + (e.name || e.id).replace(/[^a-z0-9]/gi, '-') + '.html';
+          a.click();
+          toast('Relatório baixado', 'ok');
+        }).catch(() => toast('Erro ao gerar relatório', 'err'));
+    });
     document.querySelectorAll('[data-evtab]').forEach(b => b.addEventListener('click', () => { state.evTab = b.dataset.evtab; renderEvSub(ce); }));
     renderEvSub(ce);
   };
@@ -1755,7 +1769,7 @@
       <td class="text-right whitespace-nowrap"><button class="chip" data-gedit="${g.id}">✏️</button> <button class="chip" data-gdel="${g.id}">🗑️</button></td>
     </tr>`).join('') || '<tr><td colspan="5" class="text-muted text-center py-6">Nenhum convidado neste filtro</td></tr>';
     return `<div class="card overflow-hidden">
-      <div class="flex justify-between items-center p-4 flex-wrap gap-3"><h3 class="font-semibold">Convidados · ${ce.confirmedPeople} confirmados de ${ce.guestsTotal}</h3><button class="btn btn-primary" id="g-add">+ Convidado</button></div>
+      <div class="flex justify-between items-center p-4 flex-wrap gap-3"><h3 class="font-semibold">Convidados · ${ce.confirmedPeople} confirmados de ${ce.guestsTotal}</h3><div class="flex gap-2"><label class="btn btn-ghost cursor-pointer" title="Importar CSV ou XLSX">📂 Importar lista<input type="file" id="g-import-file" accept=".csv,.xlsx,.xls" style="display:none"></label><button class="btn btn-primary" id="g-add">+ Convidado</button></div></div>
       <div class="px-4 pb-3 grid grid-cols-3 gap-3">
         ${statCard('Menores de 5 anos', ce.kidsUnder5)}
         ${statCard('De 5 a 9 anos', ce.kids5to9)}
@@ -1863,6 +1877,21 @@
     ];
     const normGuest = v => Object.assign({}, v, { age: (v.age === '' || v.age == null) ? '' : Number(v.age) });
     if ($('#g-add')) $('#g-add').addEventListener('click', () => formModal('Novo convidado', gFields(), async v => { (e.guests = e.guests || []).push(Object.assign({ id: genId() }, normGuest(v))); closeModal(); saveEv(); }));
+    if ($('#g-import-file')) $('#g-import-file').addEventListener('change', async function () {
+      const file = this.files[0]; if (!file) return;
+      const fd = new FormData(); fd.append('file', file);
+      try {
+        const token = localStorage.getItem('rf_token') || '';
+        const r = await fetch('/api/events/' + e.id + '/guests/import', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd });
+        const j = await r.json();
+        if (!r.ok) { toast(j.error || 'Erro ao importar', 'err'); return; }
+        toast(j.added + ' convidado(s) importado(s)!', 'ok');
+        const full = await api('GET', '/events/' + e.id);
+        state.ev = full.event;
+        renderEvSub(full.computed);
+      } catch (err) { toast('Erro ao importar: ' + err.message, 'err'); }
+      this.value = '';
+    });
     document.querySelectorAll('[data-gedit]').forEach(b => b.addEventListener('click', () => { const g = e.guests.find(x => x.id === b.dataset.gedit); formModal('Editar convidado', gFields(g), async v => { Object.assign(g, normGuest(v)); closeModal(); saveEv(); }); }));
     document.querySelectorAll('[data-gdel]').forEach(b => b.addEventListener('click', () => { e.guests = e.guests.filter(x => x.id !== b.dataset.gdel); saveEv(); }));
     document.querySelectorAll('[data-gtog]').forEach(b => b.addEventListener('click', () => { const g = e.guests.find(x => x.id === b.dataset.gtog); g.status = gStatus[g.status || 'Pendente']; saveEv(); }));
