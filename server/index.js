@@ -1016,6 +1016,195 @@ app.post('/api/events/:id/guests/import', auth, upload.single('file'), (req, res
   ok(res, { added, total: e.guests.length });
 });
 
+// ---------- Importacao Generica de Planilha para Eventos ----------
+// Helper: le CSV ou XLSX e retorna array de rows
+function readSpreadsheet(file) {
+  const XLSX = require('xlsx');
+  const name = (file.originalname || '').toLowerCase();
+  if (name.endsWith('.csv')) {
+    const text = file.buffer.toString('utf8');
+    const wb = XLSX.read(text, { type: 'string' });
+    return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+  } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+    const wb = XLSX.read(file.buffer, { type: 'buffer' });
+    return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+  }
+  throw new Error('Formato nao suportado. Use CSV ou XLSX.');
+}
+const normH = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+const pickH = (row, keys) => { for (const k of Object.keys(row)) { if (keys.includes(normH(k))) return String(row[k] || '').trim(); } return ''; };
+
+// Modelo de planilha para download
+app.get('/api/events/template/:section', auth, (req, res) => {
+  const XLSX = require('xlsx');
+  const section = req.params.section;
+  const templates = {
+    checklist: {
+      filename: 'modelo-checklist.xlsx',
+      headers: ['Tarefa', 'Prazo (AAAA-MM-DD)', 'Status (Pendente/Concluido)', 'Prioridade (Alta/Media/Baixa)'],
+      sample: [['Confirmar buffet', '2026-09-01', 'Pendente', 'Alta'], ['Enviar convites', '2026-08-15', 'Pendente', 'Media']]
+    },
+    cronograma: {
+      filename: 'modelo-cronograma.xlsx',
+      headers: ['Etapa', 'Hora (HH:MM)', 'Duracao (min)', 'Responsavel', 'Observacoes'],
+      sample: [['Chegada dos convidados', '19:00', '30', 'Equipe', ''], ['Entrada da aniversariante', '20:00', '15', 'Cerimonialista', '']]
+    },
+    decoracao: {
+      filename: 'modelo-decoracao.xlsx',
+      headers: ['Item', 'Unidade', 'Quantidade', 'Observacoes'],
+      sample: [['Baloes', 'unidade', '100', 'Rosa e dourado'], ['Centro de mesa', 'unidade', '15', '1 por mesa']]
+    },
+    materiais: {
+      filename: 'modelo-materiais.xlsx',
+      headers: ['Item', 'Unidade', 'Quantidade', 'Observacoes'],
+      sample: [['Guardanapos', 'pacote', '10', ''], ['Pratos descartaveis', 'unidade', '100', '']]
+    },
+    fornecedores: {
+      filename: 'modelo-fornecedores.xlsx',
+      headers: ['Fornecedor', 'Categoria', 'Contato', 'Valor Orcado (R$)', 'Valor Fechado (R$)', 'Ja Pago (R$)', 'Vencimento (AAAA-MM-DD)', 'Status (Orcando/Fechado/Pago)', 'Observacoes'],
+      sample: [['Buffet Estrela', 'Alimentacao', '(11) 99999-0001', '8000', '8000', '4000', '2026-09-01', 'Fechado', ''], ['DJ Som & Luz', 'Musica/DJ', '(11) 99999-0002', '3000', '2800', '0', '', 'Orcando', '']]
+    }
+  };
+  const tpl = templates[section];
+  if (!tpl) return bad(res, 'Secao invalida', 404);
+  const ws = XLSX.utils.aoa_to_sheet([tpl.headers, ...tpl.sample]);
+  // Largura das colunas
+  ws['!cols'] = tpl.headers.map(() => ({ wch: 22 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Modelo');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${tpl.filename}"`);
+  res.send(buf);
+});
+
+// Importar Checklist
+app.post('/api/events/:id/checklist/import', auth, upload.single('file'), (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  if (!req.file) return bad(res, 'Nenhum arquivo enviado.');
+  let rows;
+  try { rows = readSpreadsheet(req.file); } catch (err) { return bad(res, err.message); }
+  if (!e.checklist) e.checklist = [];
+  let added = 0;
+  rows.forEach(row => {
+    const text = pickH(row, ['tarefa', 'task', 'item', 'descricao', 'description', 'nome', 'name']) || pickH(row, [normH(Object.keys(row)[0])]);
+    if (!text) return;
+    const dueDate = pickH(row, ['prazo', 'data', 'date', 'duedate', 'vencimento', 'deadline']);
+    const statusRaw = normH(pickH(row, ['status', 'situacao']));
+    const statusMap = { concluido: 'Concluido', done: 'Concluido', completo: 'Concluido', concluida: 'Concluido', sim: 'Concluido', yes: 'Concluido' };
+    const status = statusMap[statusRaw] || 'Pendente';
+    const prioRaw = normH(pickH(row, ['prioridade', 'priority', 'prio']));
+    const prioMap = { alta: 'Alta', high: 'Alta', media: 'Media', medium: 'Media', baixa: 'Baixa', low: 'Baixa' };
+    const priority = prioMap[prioRaw] || 'Media';
+    e.checklist.push({ id: store.id(), text, dueDate: dueDate || '', status, priority });
+    added++;
+  });
+  store.scheduleBackup();
+  ok(res, { added, total: e.checklist.length });
+});
+
+// Importar Cronograma
+app.post('/api/events/:id/schedule/import', auth, upload.single('file'), (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  if (!req.file) return bad(res, 'Nenhum arquivo enviado.');
+  let rows;
+  try { rows = readSpreadsheet(req.file); } catch (err) { return bad(res, err.message); }
+  if (!e.schedule) e.schedule = [];
+  let added = 0;
+  rows.forEach(row => {
+    const text = pickH(row, ['etapa', 'step', 'atividade', 'activity', 'item', 'descricao', 'nome', 'name']) || pickH(row, [normH(Object.keys(row)[0])]);
+    if (!text) return;
+    const time = pickH(row, ['hora', 'horario', 'time', 'inicio', 'start']);
+    const duration = pickH(row, ['duracao', 'duration', 'tempo', 'minutos', 'minutes']);
+    const responsible = pickH(row, ['responsavel', 'responsible', 'responsavel']);
+    const notes = pickH(row, ['observacoes', 'obs', 'notes', 'nota']);
+    e.schedule.push({ id: store.id(), text, time: time || '', duration: duration || '', responsible: responsible || '', notes: notes || '' });
+    added++;
+  });
+  store.scheduleBackup();
+  ok(res, { added, total: e.schedule.length });
+});
+
+// Importar Decoracao
+app.post('/api/events/:id/decor/import', auth, upload.single('file'), (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  if (!req.file) return bad(res, 'Nenhum arquivo enviado.');
+  let rows;
+  try { rows = readSpreadsheet(req.file); } catch (err) { return bad(res, err.message); }
+  if (!e.planDecor) e.planDecor = [];
+  let added = 0;
+  rows.forEach(row => {
+    const name = pickH(row, ['item', 'nome', 'name', 'descricao', 'description']) || pickH(row, [normH(Object.keys(row)[0])]);
+    if (!name) return;
+    const unit = pickH(row, ['unidade', 'unit', 'un']) || 'unidade';
+    const qty = Number(pickH(row, ['quantidade', 'qty', 'qtd', 'quantity', 'qtde'])) || 0;
+    const notes = pickH(row, ['observacoes', 'obs', 'notes', 'nota']);
+    e.planDecor.push({ id: store.id(), name, unit, qty, notes: notes || '' });
+    added++;
+  });
+  store.scheduleBackup();
+  ok(res, { added, total: e.planDecor.length });
+});
+
+// Importar Materiais
+app.post('/api/events/:id/materials/import', auth, upload.single('file'), (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  if (!req.file) return bad(res, 'Nenhum arquivo enviado.');
+  let rows;
+  try { rows = readSpreadsheet(req.file); } catch (err) { return bad(res, err.message); }
+  if (!e.planMaterials) e.planMaterials = [];
+  let added = 0;
+  rows.forEach(row => {
+    const name = pickH(row, ['item', 'nome', 'name', 'descricao', 'description', 'material']) || pickH(row, [normH(Object.keys(row)[0])]);
+    if (!name) return;
+    const unit = pickH(row, ['unidade', 'unit', 'un']) || 'unidade';
+    const qty = Number(pickH(row, ['quantidade', 'qty', 'qtd', 'quantity', 'qtde'])) || 0;
+    const notes = pickH(row, ['observacoes', 'obs', 'notes', 'nota']);
+    e.planMaterials.push({ id: store.id(), name, unit, qty, notes: notes || '' });
+    added++;
+  });
+  store.scheduleBackup();
+  ok(res, { added, total: e.planMaterials.length });
+});
+
+// Importar Fornecedores
+app.post('/api/events/:id/vendors/import', auth, upload.single('file'), (req, res) => {
+  const d = store.getData();
+  const e = d.events.find(x => x.id === req.params.id);
+  if (!e) return bad(res, 'Evento nao encontrado', 404);
+  if (!req.file) return bad(res, 'Nenhum arquivo enviado.');
+  let rows;
+  try { rows = readSpreadsheet(req.file); } catch (err) { return bad(res, err.message); }
+  if (!e.vendors) e.vendors = [];
+  let added = 0;
+  rows.forEach(row => {
+    const name = pickH(row, ['fornecedor', 'vendor', 'nome', 'name', 'empresa', 'company']) || pickH(row, [normH(Object.keys(row)[0])]);
+    if (!name) return;
+    const category = pickH(row, ['categoria', 'category', 'tipo', 'type']) || 'Outros';
+    const contact = pickH(row, ['contato', 'contact', 'telefone', 'phone', 'email', 'whatsapp']);
+    const quoted = Number(pickH(row, ['orcado', 'quoted', 'valororcado', 'orcamento', 'budget', 'valor'])) || 0;
+    const agreed = Number(pickH(row, ['fechado', 'agreed', 'valorfechado', 'contratado'])) || quoted;
+    const paid = Number(pickH(row, ['pago', 'paid', 'japago', 'pagamento'])) || 0;
+    const dueDate = pickH(row, ['vencimento', 'duedate', 'prazo', 'datapagamento']);
+    const statusRaw = normH(pickH(row, ['status', 'situacao']));
+    const statusMap = { fechado: 'Fechado', closed: 'Fechado', pago: 'Pago', paid: 'Pago', orcando: 'Orcando' };
+    const status = statusMap[statusRaw] || 'Orcando';
+    const notes = pickH(row, ['observacoes', 'obs', 'notes', 'nota']);
+    e.vendors.push({ id: store.id(), name, category, contact: contact || '', quoted, agreed, paid, dueDate: dueDate || '', status, notes: notes || '' });
+    added++;
+  });
+  store.scheduleBackup();
+  ok(res, { added, total: e.vendors.length });
+});
+
 // ---------- Backup / Exportacao ----------
 app.get('/api/backup/export', (req, res) => {
   const d = store.getData();

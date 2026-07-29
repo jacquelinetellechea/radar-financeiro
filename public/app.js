@@ -2214,9 +2214,16 @@
       </tr>`;
     }).join('') || '<tr><td colspan="8" class="text-muted text-center py-4">Nenhum fornecedor</td></tr>';
     return `<div class="card overflow-hidden">
-      <div class="flex justify-between items-center p-4"><h3 class="font-semibold">Fornecedores e orcamento</h3><button class="btn btn-primary" id="v-add">+ Fornecedor</button></div>
-      <table><thead><tr><th>Fornecedor</th><th>Categoria</th><th>Orcado</th><th>Fechado</th><th>Pago</th><th>A pagar</th><th>Vencimento</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-      <p class="text-xs text-muted p-4">💰 = registrar pagamento (com opcao de lancar no Fluxo de Caixa do Radar)</p>
+      <div class="flex justify-between items-center p-4 flex-wrap gap-2">
+        <h3 class="font-semibold">Fornecedores e orçamento</h3>
+        <div class="flex gap-2 flex-wrap">
+          <a class="btn btn-ghost" style="font-size:12px" href="/api/events/template/fornecedores" download title="Baixar modelo XLSX">📊 Modelo</a>
+          <label class="btn btn-ghost cursor-pointer" style="font-size:12px" title="Importar CSV ou XLSX">📂 Importar<input type="file" id="v-import-file" accept=".csv,.xlsx,.xls" style="display:none"></label>
+          <button class="btn btn-primary" id="v-add">+ Fornecedor</button>
+        </div>
+      </div>
+      <table><thead><tr><th>Fornecedor</th><th>Categoria</th><th>Orçado</th><th>Fechado</th><th>Pago</th><th>A pagar</th><th>Vencimento</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <p class="text-xs text-muted p-4">💰 = registrar pagamento (com opção de lançar no Fluxo de Caixa do Radar)</p>
     </div>`;
   }
 
@@ -2264,7 +2271,14 @@
         <td class="text-right"><button class="chip" data-cdel="${i.id}">🗑️</button></td></tr>`;
     }).join('') || '<tr><td colspan="4" class="text-muted text-center py-4">Nenhuma tarefa</td></tr>';
     return `<div class="card overflow-hidden">
-      <div class="flex justify-between items-center p-4"><h3 class="font-semibold">Checklist</h3><button class="btn btn-primary" id="c-add">+ Tarefa</button></div>
+      <div class="flex justify-between items-center p-4 flex-wrap gap-2">
+        <h3 class="font-semibold">Checklist</h3>
+        <div class="flex gap-2 flex-wrap">
+          <a class="btn btn-ghost" style="font-size:12px" href="/api/events/template/checklist" download title="Baixar modelo XLSX">📊 Modelo</a>
+          <label class="btn btn-ghost cursor-pointer" style="font-size:12px" title="Importar CSV ou XLSX">📂 Importar<input type="file" id="cl-import-file" accept=".csv,.xlsx,.xls" style="display:none"></label>
+          <button class="btn btn-primary" id="c-add">+ Tarefa</button>
+        </div>
+      </div>
       <table><thead><tr><th>Tarefa</th><th>Prazo</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
@@ -2310,7 +2324,14 @@
       </tr>`;
     }).join('') || '<tr><td colspan="5" class="text-muted text-center py-4">Nenhuma etapa no cronograma</td></tr>';
     return `<div class="card overflow-hidden">
-      <div class="flex justify-between items-center p-4"><h3 class="font-semibold">Cronograma</h3><button class="btn btn-primary" id="sched-add">+ Etapa</button></div>
+      <div class="flex justify-between items-center p-4 flex-wrap gap-2">
+        <h3 class="font-semibold">Cronograma</h3>
+        <div class="flex gap-2 flex-wrap">
+          <a class="btn btn-ghost" style="font-size:12px" href="/api/events/template/cronograma" download title="Baixar modelo XLSX">📊 Modelo</a>
+          <label class="btn btn-ghost cursor-pointer" style="font-size:12px" title="Importar CSV ou XLSX">📂 Importar<input type="file" id="sc-import-file" accept=".csv,.xlsx,.xls" style="display:none"></label>
+          <button class="btn btn-primary" id="sched-add">+ Etapa</button>
+        </div>
+      </div>
       <table><thead><tr><th>Etapa</th><th>Categoria</th><th>Data prevista</th><th>Status (clique)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
@@ -2392,6 +2413,10 @@
           </div>
           <!-- Ações -->
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            ${(planKey === 'planDecor' || planKey === 'planMaterials') ? `
+              <a class="btn btn-ghost" style="font-size:12px" href="/api/events/template/${planKey === 'planDecor' ? 'decoracao' : 'materiais'}" download title="Baixar modelo XLSX">📊 Modelo</a>
+              <label class="btn btn-ghost cursor-pointer" style="font-size:12px" title="Importar CSV ou XLSX">📂 Importar<input type="file" id="plan-import-file" data-plan-import-key="${planKey}" accept=".csv,.xlsx,.xls" style="display:none"></label>
+            ` : ''}
             <button class="btn btn-primary" id="plan-add-item" data-plan-key="${planKey}" style="font-size:13px">+ Item</button>
             <button class="btn btn-ghost" id="plan-save-all" data-plan-key="${planKey}" style="font-size:13px">💾 Salvar</button>
           </div>
@@ -2550,6 +2575,30 @@
     }));
     document.querySelectorAll('[data-sched-del]').forEach(b => b.addEventListener('click', () => { e.schedule = (e.schedule || []).filter(x => x.id !== b.dataset.schedDel); saveEv(); }));
 
+    // ---- Importação de planilha ----
+    // Helper genérico de importação
+    async function importSpreadsheet(fileInput, endpoint, successMsg) {
+      const file = fileInput.files[0]; if (!file) return;
+      const fd = new FormData(); fd.append('file', file);
+      try {
+        const token = localStorage.getItem('rf_token') || '';
+        const r = await fetch('/api/events/' + e.id + '/' + endpoint, { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd });
+        const j = await r.json();
+        if (!r.ok) { toast(j.error || 'Erro ao importar', 'err'); return; }
+        toast((j.added || 0) + ' ' + successMsg, 'ok');
+        const full = await api('GET', '/events/' + e.id);
+        state.ev = full.event;
+        renderEvSub(full.computed);
+      } catch (err) { toast('Erro: ' + err.message, 'err'); }
+      fileInput.value = '';
+    }
+    // Fornecedores
+    if ($('#v-import-file')) $('#v-import-file').addEventListener('change', function () { importSpreadsheet(this, 'vendors/import', 'fornecedor(es) importado(s)!'); });
+    // Checklist
+    if ($('#cl-import-file')) $('#cl-import-file').addEventListener('change', function () { importSpreadsheet(this, 'checklist/import', 'tarefa(s) importada(s)!'); });
+    // Cronograma
+    if ($('#sc-import-file')) $('#sc-import-file').addEventListener('change', function () { importSpreadsheet(this, 'schedule/import', 'etapa(s) importada(s)!'); });
+
     // Planejamento (Alimentacao, Bebidas, Decoracao, Materiais, Equipe)
     const planKey = { alimentacao: 'planFood', bebidas: 'planDrinks', decoracao: 'planDecor', materiais: 'planMaterials', equipe: 'planTeam' }[state.evTab];
     if (planKey) {
@@ -2636,6 +2685,13 @@
             renderEvSub(result.computed);
           } catch (err) { toast('Erro: ' + err.message, 'err'); }
         });
+      });
+      // Importar planilha (Decoração / Materiais)
+      if ($('#plan-import-file')) $('#plan-import-file').addEventListener('change', function () {
+        const key = this.dataset.planImportKey;
+        const ep = key === 'planDecor' ? 'decor/import' : 'materials/import';
+        const msg = key === 'planDecor' ? 'item(ns) de decoração importado(s)!' : 'material(is) importado(s)!';
+        importSpreadsheet(this, ep, msg);
       });
       // Adicionar item manualmente
       if ($('#plan-add-item')) $('#plan-add-item').addEventListener('click', () => {
