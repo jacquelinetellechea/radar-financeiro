@@ -2320,49 +2320,110 @@
   const PLAN_UNIT_COL = { planFood: 'Qtd sugerida', planDrinks: 'Qtd sugerida', planDecor: 'Qtd sugerida', planMaterials: 'Qtd sugerida', planTeam: 'Qtd sugerida' };
 
   async function subEvPlan(e, ce, planKey, label) {
-    // Busca perfis disponíveis
     let profiles = [];
     try { profiles = await api('GET', '/event-profiles'); } catch (_) {}
     const items = e[planKey] || [];
     const adults = ce.adults || 0;
     const children = ce.kidsUnder10 || 0;
     const total = adults + children;
+    const totalItems = items.length;
+    const filledItems = items.filter(i => (Number(i.qty) || 0) > 0).length;
 
-    const rows = items.map(i => {
+    // Ícones por categoria
+    const PLAN_ICONS = { planFood: '🍽️', planDrinks: '🍹', planDecor: '🎀', planMaterials: '📦', planTeam: '👥' };
+    const icon = PLAN_ICONS[planKey] || '📋';
+
+    const rows = items.map((i, idx) => {
       const sugQty = i.suggestedTotal != null ? i.suggestedTotal : (i.suggestedQty != null ? i.suggestedQty : '');
-      return `<tr>
-        <td><b>${esc(i.name)}</b></td>
-        <td>${esc(i.unit || '')}</td>
-        <td class="text-muted">${sugQty !== '' ? sugQty : '—'}</td>
-        <td><input class="input" type="number" min="0" step="0.01" style="width:90px" data-plan-qty="${i.id}" value="${i.qty != null ? i.qty : (sugQty || 0)}"></td>
-        <td><input class="input" style="width:140px" data-plan-notes="${i.id}" value="${esc(i.notes || '')}" placeholder="Obs..."></td>
-        <td class="text-right whitespace-nowrap">
-          <button class="chip" data-plan-edit="${i.id}">✏️</button>
-          <button class="chip" data-plan-del="${i.id}">🗑️</button>
+      const currentQty = i.qty != null ? i.qty : (sugQty || 0);
+      const hasSug = sugQty !== '' && sugQty != null;
+      const diffClass = hasSug && Number(currentQty) !== Number(sugQty) ? 'color:#E67E22;font-weight:600' : 'color:#2D7A4F;font-weight:600';
+      return `<tr style="background:${idx % 2 === 0 ? '#fff' : '#FDFAF6'}">
+        <td style="padding:10px 14px">
+          <span style="font-weight:600;color:#2C2416">${esc(i.name)}</span>
+        </td>
+        <td style="padding:10px 14px;color:#8B7355;font-size:13px">${esc(i.unit || '—')}</td>
+        <td style="padding:10px 14px;text-align:center">
+          ${hasSug ? `<span style="background:#EEF7EE;color:#2D7A4F;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600">${sugQty}</span>` : '<span style="color:#ccc">—</span>'}
+        </td>
+        <td style="padding:10px 14px">
+          <input class="input" type="number" min="0" step="0.01" style="width:88px;text-align:center;font-weight:700;font-size:14px" data-plan-qty="${i.id}" value="${currentQty}">
+        </td>
+        <td style="padding:10px 14px">
+          <input class="input" style="width:100%;min-width:120px" data-plan-notes="${i.id}" value="${esc(i.notes || '')}" placeholder="Observações...">
+        </td>
+        <td style="padding:10px 14px;text-align:right;white-space:nowrap">
+          <button style="background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:6px;color:#8B7355" title="Editar" data-plan-edit="${i.id}">✏️</button>
+          <button style="background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:6px;color:#C0392B" title="Excluir" data-plan-del="${i.id}">🗑️</button>
         </td>
       </tr>`;
-    }).join('') || `<tr><td colspan="6" class="text-muted text-center py-4">Nenhum item. Aplique um perfil ou adicione manualmente.</td></tr>`;
+    }).join('') || `<tr><td colspan="6" style="text-align:center;padding:32px 16px;color:#aaa;font-style:italic">Nenhum item cadastrado. Aplique um perfil inteligente ou adicione manualmente.</td></tr>`;
 
     const profileOpts = profiles.filter(p => p.active).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-    const guestInfo = total > 0 ? `<span class="text-sm text-muted ml-3">${adults} adultos + ${children} crianças = ${total} pessoas</span>` : '';
 
-    return `<div class="card overflow-hidden">
-      <div class="flex justify-between items-center p-4 flex-wrap gap-3">
-        <div class="flex items-center gap-3 flex-wrap">
-          <h3 class="font-semibold">${label}</h3>
-          ${guestInfo}
+    // Badges de resumo
+    const guestBadges = total > 0 ? `
+      <span style="background:#F0EAE0;color:#8B7355;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:600">${adults} adultos</span>
+      ${children > 0 ? `<span style="background:#FFF0E8;color:#B9502C;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:600">${children} crianças</span>` : ''}
+      <span style="background:#EEF7EE;color:#2D7A4F;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:600">${total} total</span>` : '';
+
+    const progressPct = totalItems > 0 ? Math.round(filledItems / totalItems * 100) : 0;
+    const progressBar = totalItems > 0 ? `
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <div style="flex:1;height:4px;background:#E9DECB;border-radius:4px;overflow:hidden">
+          <div style="width:${progressPct}%;height:100%;background:#2D7A4F;border-radius:4px;transition:width .3s"></div>
         </div>
-        <div class="flex gap-2 flex-wrap">
-          ${profileOpts ? `<select class="input" id="plan-profile-sel" style="min-width:160px"><option value="">Aplicar perfil...</option>${profileOpts}</select>
-          <button class="btn btn-ghost" id="plan-apply-profile">Calcular</button>` : ''}
-          <button class="btn btn-primary" id="plan-add-item" data-plan-key="${planKey}">+ Item</button>
-          <button class="btn btn-ghost" id="plan-save-all" data-plan-key="${planKey}">Salvar</button>
+        <span style="font-size:11px;color:#8B7355;white-space:nowrap">${filledItems}/${totalItems} preenchidos</span>
+      </div>` : '';
+
+    return `<div style="border-radius:14px;border:1px solid #E9DECB;overflow:hidden;background:#fff">
+
+      <!-- Cabeçalho principal -->
+      <div style="background:linear-gradient(135deg,#FAF7F2 0%,#F5EFE6 100%);padding:18px 22px 14px;border-bottom:1px solid #E9DECB">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="font-size:20px">${icon}</span>
+              <h3 style="font-size:17px;font-weight:700;color:#2C2416;margin:0">${label}</h3>
+              ${totalItems > 0 ? `<span style="background:#2C2416;color:#fff;border-radius:20px;padding:1px 10px;font-size:11px;font-weight:600">${totalItems}</span>` : ''}
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">${guestBadges}</div>
+            ${progressBar}
+          </div>
+          <!-- Ações -->
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary" id="plan-add-item" data-plan-key="${planKey}" style="font-size:13px">+ Item</button>
+            <button class="btn btn-ghost" id="plan-save-all" data-plan-key="${planKey}" style="font-size:13px">💾 Salvar</button>
+          </div>
         </div>
       </div>
-      <table>
-        <thead><tr><th>Item</th><th>Unidade</th><th>Sugerido</th><th>Quantidade</th><th>Observacoes</th><th></th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+
+      <!-- Barra de perfil / calcular -->
+      ${profileOpts ? `<div style="background:#FFFBF5;border-bottom:1px solid #E9DECB;padding:12px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:600;color:#8B7355;text-transform:uppercase;letter-spacing:.04em">Perfil Inteligente</span>
+        <select class="input" id="plan-profile-sel" style="flex:1;min-width:180px;max-width:280px;font-size:13px">
+          <option value="">Selecione um perfil...</option>${profileOpts}
+        </select>
+        <button class="btn" id="plan-apply-profile" style="background:#B9502C;color:#fff;font-size:13px;font-weight:600;padding:7px 18px;border-radius:8px">⚡ Calcular quantidades</button>
+        <span style="font-size:11px;color:#aaa">Calcula automaticamente com base nos convidados</span>
+      </div>` : ''}
+
+      <!-- Tabela de itens -->
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="background:#FAF7F2">
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#8B7355;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #E9DECB">Item</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#8B7355;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #E9DECB">Unidade</th>
+              <th style="padding:10px 14px;text-align:center;font-size:11px;font-weight:700;color:#8B7355;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #E9DECB">Sugerido</th>
+              <th style="padding:10px 14px;text-align:center;font-size:11px;font-weight:700;color:#8B7355;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #E9DECB">Quantidade</th>
+              <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#8B7355;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #E9DECB">Observações</th>
+              <th style="padding:10px 14px;border-bottom:2px solid #E9DECB"></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     </div>`;
   }
 
