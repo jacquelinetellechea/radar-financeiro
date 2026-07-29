@@ -101,6 +101,9 @@ tr:hover td { background:#FBF6EE; }
 .notif-item .ni-sub { font-size:.72rem; color:#A2957F; margin-top:.15rem; }
 .notif-item.ni-high .ni-icon { color:#B23A2E; }
 .notif-item.ni-medium .ni-icon { color:#B07A20; }
+.notif-actions { padding:.5rem 1rem; border-bottom:1px solid #E9DECB; display:flex; justify-content:flex-end; }
+.ni-dismiss { margin-left:auto; flex-shrink:0; background:none; border:none; color:#A2957F; font-size:1rem; cursor:pointer; padding:0 .25rem; line-height:1; border-radius:4px; }
+.ni-dismiss:hover { color:#B23A2E; background:#F7E3E0; }
 .notif-empty { padding:1.5rem; text-align:center; color:#A2957F; font-size:.85rem; }
 
 /* ---- Sidebar mobile overlay ---- */

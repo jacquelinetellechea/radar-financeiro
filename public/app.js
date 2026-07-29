@@ -63,6 +63,7 @@
 
   // ---------------- Notificacoes ----------------
   let _notifCache = null;
+  let _dismissedNotifs = JSON.parse(localStorage.getItem('radar_dismissed_notifs') || '[]');
   async function loadNotifs() {
     if (_notifCache) return _notifCache;
     try {
@@ -368,16 +369,32 @@
     const notifList = $('#notif-list');
     if (notifBtn) {
       loadNotifs().then(notifs => {
-        const high = notifs.filter(n => n.level === 'high' || n.level === 'medium').length;
-        if (high > 0) { notifBadge.textContent = high; notifBadge.style.display = 'flex'; }
-        if (notifs.length === 0) {
-          notifList.innerHTML = '<div class="notif-empty">Voce nao possui notificacoes no momento.</div>';
-        } else {
-          notifList.innerHTML = notifs.map(n => {
-            const icon = n.level === 'high' ? '⚠️' : n.level === 'medium' ? '🔔' : 'ℹ️';
-            return `<div class="notif-item ni-${n.level}"><span class="ni-icon">${icon}</span><div><div class="ni-text">${esc(n.text)}</div></div></div>`;
-          }).join('');
-        }
+        const visible = notifs.filter(n => !_dismissedNotifs.includes(n.text));
+        const renderNotifs = (list) => {
+          const high = list.filter(n => n.level === 'high' || n.level === 'medium').length;
+          notifBadge.textContent = high;
+          notifBadge.style.display = high > 0 ? 'flex' : 'none';
+          if (list.length === 0) {
+            notifList.innerHTML = '<div class="notif-empty">Voce nao possui notificacoes no momento.</div>';
+          } else {
+            notifList.innerHTML = `<div class="notif-actions"><button class="chip" id="notif-clear-all">Limpar tudo</button></div>`
+              + list.map((n, idx) => {
+                const icon = n.level === 'high' ? '⚠️' : n.level === 'medium' ? '🔔' : 'ℹ️';
+                return `<div class="notif-item ni-${n.level}"><span class="ni-icon">${icon}</span><div class="ni-text">${esc(n.text)}</div><button class="ni-dismiss" data-ni="${idx}" title="Dispensar">×</button></div>`;
+              }).join('');
+            if ($('#notif-clear-all')) $('#notif-clear-all').addEventListener('click', () => {
+              _dismissedNotifs = list.map(n => n.text);
+              localStorage.setItem('radar_dismissed_notifs', JSON.stringify(_dismissedNotifs));
+              renderNotifs([]);
+            });
+            notifList.querySelectorAll('[data-ni]').forEach(b => b.addEventListener('click', () => {
+              const n = list[parseInt(b.dataset.ni)];
+              if (n) { _dismissedNotifs.push(n.text); localStorage.setItem('radar_dismissed_notifs', JSON.stringify(_dismissedNotifs)); }
+              renderNotifs(list.filter(x => !_dismissedNotifs.includes(x.text)));
+            }));
+          }
+        };
+        renderNotifs(visible);
       });
       notifBtn.addEventListener('click', (e) => {
         e.stopPropagation();
