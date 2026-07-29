@@ -2568,36 +2568,66 @@
       if ($('#plan-apply-profile')) $('#plan-apply-profile').addEventListener('click', async () => {
         const sel = $('#plan-profile-sel'); if (!sel || !sel.value) { toast('Selecione um perfil', 'err'); return; }
         const profileId = sel.value;
-        // Mostrar modal de seleção de seções
+        // Modal de seleção de seções — usa openModal para centralização correta
         const SECS = [
-          { key: 'food', label: 'Alimentação' }, { key: 'drinks', label: 'Bebidas' },
-          { key: 'decor', label: 'Decoração' }, { key: 'materials', label: 'Materiais' },
-          { key: 'team', label: 'Equipe' }, { key: 'checklist', label: 'Checklist' },
-          { key: 'schedule', label: 'Cronograma' }, { key: 'vendors', label: 'Fornecedores' },
-          { key: 'budget', label: 'Orçamento' }, { key: 'settings', label: 'Configurações' }
+          { key: 'food',      label: 'Alimentação',  icon: '🍽️' },
+          { key: 'drinks',    label: 'Bebidas',       icon: '🍹' },
+          { key: 'decor',     label: 'Decoração',     icon: '🎀' },
+          { key: 'materials', label: 'Materiais',     icon: '📦' },
+          { key: 'team',      label: 'Equipe',        icon: '👥' },
+          { key: 'checklist', label: 'Checklist',     icon: '✅' },
+          { key: 'schedule',  label: 'Cronograma',    icon: '🕐' },
+          { key: 'vendors',   label: 'Fornecedores',  icon: '🤝' },
+          { key: 'budget',    label: 'Orçamento',     icon: '💰' },
+          { key: 'settings',  label: 'Configurações', icon: '⚙️' }
         ];
-        const checksHtml = SECS.map(s => `<label class="flex items-center gap-2 text-sm cursor-pointer">
-          <input type="checkbox" class="prof-sec-check" value="${s.key}" checked style="width:16px;height:16px"> ${s.label}
-        </label>`).join('');
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay active';
-        overlay.innerHTML = `<div class="modal" style="max-width:420px">
-          <div class="modal-header"><h3>Selecionar seções a importar</h3><button class="modal-close" id="sec-modal-close">×</button></div>
-          <div class="modal-body">
-            <p class="text-sm text-muted mb-4">Escolha quais seções do perfil serão importadas para este evento:</p>
-            <div class="grid grid-cols-2 gap-3">${checksHtml}</div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-ghost" id="sec-modal-cancel">Cancelar</button>
-            <button class="btn btn-primary" id="sec-modal-ok">Importar seleção</button>
-          </div>
-        </div>`;
-        document.body.appendChild(overlay);
-        overlay.querySelector('#sec-modal-close').addEventListener('click', () => overlay.remove());
-        overlay.querySelector('#sec-modal-cancel').addEventListener('click', () => overlay.remove());
-        overlay.querySelector('#sec-modal-ok').addEventListener('click', async () => {
-          const sections = [...overlay.querySelectorAll('.prof-sec-check:checked')].map(c => c.value);
-          overlay.remove();
+        const checksHtml = SECS.map(s => `
+          <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1.5px solid #E9DECB;cursor:pointer;background:#fff;transition:border-color .15s" class="sec-check-label">
+            <input type="checkbox" class="prof-sec-check" value="${s.key}" checked style="width:16px;height:16px;accent-color:#B9502C;cursor:pointer">
+            <span style="font-size:16px">${s.icon}</span>
+            <span style="font-size:13px;font-weight:600;color:#2C2416">${s.label}</span>
+          </label>`).join('');
+        const profileName = profiles.find(p => p.id === profileId)?.name || 'perfil selecionado';
+        const bodyHTML = `
+          <div>
+            <div style="background:#FFFBF5;border:1px solid #E9DECB;border-radius:10px;padding:12px 16px;margin-bottom:18px;display:flex;align-items:center;gap:10px">
+              <span style="font-size:20px">⚡</span>
+              <div>
+                <div style="font-size:12px;color:#8B7355;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Perfil selecionado</div>
+                <div style="font-size:14px;font-weight:700;color:#2C2416">${esc(profileName)}</div>
+              </div>
+            </div>
+            <p style="font-size:13px;color:#8B7355;margin-bottom:14px">Escolha quais seções serão importadas para este evento. As demais permanecerão intactas.</p>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px">
+              <button type="button" id="sec-sel-all" style="font-size:11px;color:#B9502C;background:none;border:none;cursor:pointer;font-weight:600">Marcar tudo</button>
+              <span style="color:#ccc">|</span>
+              <button type="button" id="sec-sel-none" style="font-size:11px;color:#8B7355;background:none;border:none;cursor:pointer;font-weight:600">Desmarcar tudo</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px">${checksHtml}</div>
+            <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:14px;border-top:1px solid #E9DECB">
+              <button class="btn btn-ghost" id="sec-modal-cancel">Cancelar</button>
+              <button class="btn" id="sec-modal-ok" style="background:#B9502C;color:#fff;font-weight:700;padding:9px 22px;border-radius:9px">⚡ Importar seleção</button>
+            </div>
+          </div>`;
+        openModal('Importar do Perfil Inteligente', bodyHTML);
+        // Marcar/desmarcar tudo
+        document.getElementById('sec-sel-all')?.addEventListener('click', () => {
+          document.querySelectorAll('.prof-sec-check').forEach(c => { c.checked = true; });
+        });
+        document.getElementById('sec-sel-none')?.addEventListener('click', () => {
+          document.querySelectorAll('.prof-sec-check').forEach(c => { c.checked = false; });
+        });
+        // Hover visual nos cards
+        document.querySelectorAll('.sec-check-label').forEach(lbl => {
+          const cb = lbl.querySelector('input');
+          const update = () => { lbl.style.borderColor = cb.checked ? '#B9502C' : '#E9DECB'; lbl.style.background = cb.checked ? '#FFF5F0' : '#fff'; };
+          update();
+          cb.addEventListener('change', update);
+        });
+        document.getElementById('sec-modal-cancel')?.addEventListener('click', closeModal);
+        document.getElementById('sec-modal-ok')?.addEventListener('click', async () => {
+          const sections = [...document.querySelectorAll('.prof-sec-check:checked')].map(c => c.value);
+          closeModal();
           if (!sections.length) { toast('Nenhuma seção selecionada', 'err'); return; }
           try {
             const result = await api('POST', '/events/' + e.id + '/apply-profile-selective', { profileId, sections });
