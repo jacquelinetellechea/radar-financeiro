@@ -29,6 +29,7 @@ const proj = require('./projection');
 const importer = require('./importer');
 const projmod = require('./projects');
 const evmod = require('./events');
+const pdfgen = require('./pdf');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -940,7 +941,7 @@ app.post('/api/events/:id/apply-profile-selective', auth, (req, res) => {
 });
 
 // ---------- Relatorio PDF do Evento ----------
-app.get('/api/events/:id/report', auth, (req, res) => {
+app.get('/api/events/:id/report', auth, async (req, res) => {
   const e = store.getData().events.find(x => x.id === req.params.id);
   if (!e) return bad(res, 'Evento nao encontrado', 404);
   const c = evmod.computeEvent(e);
@@ -1037,13 +1038,22 @@ app.get('/api/events/:id/report', auth, (req, res) => {
 </div>
 </body></html>`;
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="relatorio-${e.id}.html"`);
-  res.send(html);
+  try {
+    const pdf = await pdfgen.htmlToPdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="relatorio-${e.id}.pdf"`);
+    res.send(pdf);
+  } catch (pdfErr) {
+    // Fallback para HTML se o Chromium não estiver disponível
+    console.warn('PDF indisponível, retornando HTML:', pdfErr.message);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="relatorio-${e.id}.html"`);
+    res.send(html);
+  }
 });
 
 // ---------- Relatorio do Cliente (Lista de Compras) ----------
-app.get('/api/events/:id/client-report', auth, (req, res) => {
+app.get('/api/events/:id/client-report', auth, async (req, res) => {
   const d = store.getData();
   const e = d.events.find(x => x.id === req.params.id);
   if (!e) return bad(res, 'Evento nao encontrado', 404);
@@ -1256,9 +1266,17 @@ app.get('/api/events/:id/client-report', auth, (req, res) => {
 </div>
 </body></html>`;
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="lista-compras-${e.id}.html"`);
-  res.send(html);
+  try {
+    const pdf = await pdfgen.htmlToPdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="lista-compras-${e.id}.pdf"`);
+    res.send(pdf);
+  } catch (pdfErr) {
+    console.warn('PDF indisponível, retornando HTML:', pdfErr.message);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="lista-compras-${e.id}.html"`);
+    res.send(html);
+  }
 });
 
 // ---------- Importacao de Convidados ----------

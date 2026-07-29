@@ -2118,7 +2118,7 @@
         .then(blob => {
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
-          a.download = 'relatorio-' + (e.name || e.id).replace(/[^a-z0-9]/gi, '-') + '.html';
+          a.download = 'relatorio-' + (e.name || e.id).replace(/[^a-z0-9]/gi, '-') + '.pdf';
           a.click();
           toast('Relatório baixado', 'ok');
         }).catch(() => toast('Erro ao gerar relatório', 'err'));
@@ -2131,7 +2131,7 @@
         .then(blob => {
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
-          a.download = 'lista-compras-' + (e.name || e.id).replace(/[^a-z0-9]/gi, '-') + '.html';
+          a.download = 'lista-compras-' + (e.name || e.id).replace(/[^a-z0-9]/gi, '-') + '.pdf';
           a.click();
           toast('Lista do cliente baixada!', 'ok');
         }).catch(() => toast('Erro ao gerar lista', 'err'));
