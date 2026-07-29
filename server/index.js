@@ -95,6 +95,7 @@ app.post('/api/auth/change-password', auth, (req, res) => {
 // Tudo abaixo exige autenticacao
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth')) return next();
+  if (req.path.startsWith('/events/template/')) return next(); // download publico de modelos
   return auth(req, res, next);
 });
 
