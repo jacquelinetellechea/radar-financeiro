@@ -2064,12 +2064,26 @@
       const evListTabs = [['lista', 'Eventos'], ['perfis', 'Perfis Inteligentes'], ['globais', 'Configurações Globais']];
       const evListTabsHtml = evListTabs.map(([k, l]) => `<button class="btn ${k === state.evListTab ? 'btn-primary' : 'btn-ghost'}" data-evlisttab="${k}">${l}</button>`).join('');
       c.innerHTML = `
-        <div class="flex items-start justify-between gap-4 mb-6 flex-wrap">
-          <div>
-            <h1 class="text-4xl md:text-5xl font-display mb-3">Eventos</h1>
-            <p class="text-muted max-w-md leading-relaxed">Os seus e os de clientes — orçamento, fornecedores, convidados e checklist, tudo com calma num só lugar.</p>
+        <!-- Cabeçalho com identidade visual JT -->
+        <div style="background:linear-gradient(135deg,#F5EFE6 0%,#EDE4D6 100%);border-radius:20px;padding:28px 32px 20px;margin-bottom:24px;border:1px solid #E2D5C0;position:relative;overflow:hidden">
+          <div style="position:absolute;top:-30px;right:-30px;width:140px;height:140px;border-radius:50%;background:rgba(185,80,44,.06)"></div>
+          <div style="position:absolute;bottom:-20px;left:-20px;width:90px;height:90px;border-radius:50%;background:rgba(185,80,44,.04)"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;position:relative">
+            <div style="display:flex;align-items:center;gap:20px">
+              <!-- Monograma JT em arco -->
+              <div style="width:64px;height:72px;position:relative;flex-shrink:0">
+                <svg viewBox="0 0 64 72" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:64px;height:72px">
+                  <path d="M4 36 C4 18 14 4 32 4 C50 4 60 18 60 36 L60 68 L4 68 Z" stroke="#3D3530" stroke-width="1.5" fill="none"/>
+                  <text x="32" y="46" text-anchor="middle" font-family="Georgia,serif" font-size="22" fill="#3D3530" font-weight="400" letter-spacing="1">JT</text>
+                </svg>
+              </div>
+              <div>
+                <div style="font-family:'Georgia',serif;font-size:1.55rem;color:#2C2420;letter-spacing:0.01em;line-height:1.1">Jacqueline Tellechea</div>
+                <div style="font-family:'Helvetica Neue',sans-serif;font-size:.68rem;color:#8C7B6E;letter-spacing:.22em;text-transform:uppercase;margin-top:3px">Assessoria de Eventos</div>
+              </div>
+            </div>
+            ${state.evListTab === 'lista' ? '<button class="btn btn-primary" id="ne" style="background:#3D3530;border-color:#3D3530">+ Novo evento</button>' : ''}
           </div>
-          ${state.evListTab === 'lista' ? '<button class="btn btn-primary" id="ne">+ Novo evento</button>' : ''}
         </div>
         <div class="flex gap-1 flex-wrap mb-6">${evListTabsHtml}</div>
         <div id="ev-list-sub"></div>`;
@@ -2111,17 +2125,29 @@
     const evMeta = [e.type, e.date ? dbr(e.date) + (e.time ? ' ' + e.time : '') : '', e.venue].filter(Boolean).join(' · ');
     const evActions = `<button class="btn btn-ghost" id="ev-back">← Eventos</button> <button class="btn btn-ghost" id="ev-edit">✏️ Editar</button> <button class="btn btn-ghost" id="ev-report" title="Relatório completo (interno)">📄 Relatório</button> <button class="btn btn-ghost" id="ev-client-report" title="Lista de compras para o cliente">🛒 Lista do Cliente</button> <button class="btn btn-ghost" id="ev-del">🗑️</button>`;
     const evTheme = e.themeColor || '#B9502C';
-    const evHeader = e.coverUrl
-      ? `<div class="flex justify-end gap-2 mb-3">${evActions}</div>
-         <div class="rounded-2xl overflow-hidden mb-5" style="position:relative;height:200px;background:#EADFCE url('${esc(e.coverUrl)}') center/cover;border:1px solid #E9DECB">
-           <div style="position:absolute;inset:0;background:linear-gradient(to top, rgba(30,26,22,.78), rgba(30,26,22,.05) 62%)"></div>
-           <div style="position:absolute;top:0;left:0;right:0;height:6px;background:${esc(evTheme)}"></div>
-           <div style="position:absolute;left:24px;bottom:18px;right:24px">
-             <h1 class="font-display" style="font-size:2.1rem;line-height:1.1;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.45)">${esc(e.name)}</h1>
-             <p style="font-size:.92rem;color:#fff;opacity:.92">${esc(evMeta)}</p>
-           </div>
-         </div>`
-      : pageHeader(e.name, evMeta, evActions);
+    // Cabeçalho do evento com identidade visual JT
+    const evHeader = `
+      <div style="background:linear-gradient(135deg,#F5EFE6 0%,#EDE4D6 100%);border-radius:20px;padding:20px 24px;margin-bottom:20px;border:1px solid #E2D5C0;position:relative;overflow:hidden">
+        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:${esc(evTheme)};border-radius:20px 20px 0 0"></div>
+        <div style="position:absolute;top:-20px;right:-20px;width:100px;height:100px;border-radius:50%;background:rgba(185,80,44,.05)"></div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:16px">
+            <div style="flex-shrink:0">
+              <svg viewBox="0 0 52 58" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:48px;height:54px">
+                <path d="M3 29 C3 14 11 3 26 3 C41 3 49 14 49 29 L49 55 L3 55 Z" stroke="#3D3530" stroke-width="1.4" fill="none"/>
+                <text x="26" y="37" text-anchor="middle" font-family="Georgia,serif" font-size="17" fill="#3D3530" letter-spacing="1">JT</text>
+              </svg>
+            </div>
+            <div>
+              <div style="font-family:'Georgia',serif;font-size:.72rem;color:#8C7B6E;letter-spacing:.2em;text-transform:uppercase;margin-bottom:4px">Jacqueline Tellechea · Assessoria de Eventos</div>
+              ${e.coverUrl ? `<div style="width:100%;max-height:120px;overflow:hidden;border-radius:10px;margin-bottom:8px"><img src="${esc(e.coverUrl)}" style="width:100%;object-fit:cover;max-height:120px"></div>` : ''}
+              <h1 style="font-family:'Georgia',serif;font-size:1.9rem;color:#2C2420;line-height:1.1;margin:0">${esc(e.name)}</h1>
+              ${evMeta ? `<p style="font-size:.88rem;color:#8C7B6E;margin-top:4px">${esc(evMeta)}</p>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start">${evActions}</div>
+        </div>
+      </div>`;
     c.innerHTML = evHeader
       + `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">

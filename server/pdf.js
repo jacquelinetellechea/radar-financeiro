@@ -52,33 +52,58 @@ const PAGE_H = 841.89;
 const MARGIN = 40;
 const COL_W  = PAGE_W - MARGIN * 2;
 
-/** Cabeçalho colorido com nome do evento */
+/** Cabeçalho com identidade visual Jacqueline Tellechea Assessoria de Eventos */
 function drawCover(doc, e, subtitle, themeRgb) {
   const [r, g, b] = themeRgb;
-  doc.rect(0, 0, PAGE_W, 110).fill(`rgb(${r},${g},${b})`);
-  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(22)
-     .text(e.name || 'Evento', MARGIN, 22, { width: COL_W });
+  // Fundo bege creme
+  doc.rect(0, 0, PAGE_W, 130).fill('#F5EFE6');
+  // Faixa de cor do evento no topo
+  doc.rect(0, 0, PAGE_W, 5).fill(`rgb(${r},${g},${b})`);
+  // Círculo decorativo
+  doc.circle(PAGE_W - 30, 10, 70).fillOpacity(0.06).fill(`rgb(${r},${g},${b})`).fillOpacity(1);
+
+  // Monograma JT em arco (retangulo com topo arredondado simulando arco)
+  const mX = MARGIN, mY = 14, mW = 44, mH = 50;
+  // Forma de arco: roundedRect com raio grande no topo
+  doc.roundedRect(mX, mY, mW, mH, 22).strokeColor('#3D3530').lineWidth(1.2).stroke();
+  // Letras JT
+  doc.fillColor('#3D3530').font('Helvetica-Bold').fontSize(16)
+     .text('JT', mX, mY + 14, { width: mW, align: 'center', characterSpacing: 2 });
+
+  // Nome e tagline
+  const textX = MARGIN + mW + 14;
+  doc.fillColor('#2C2420').font('Helvetica-Bold').fontSize(15)
+     .text('Jacqueline Tellechea', textX, 20, { width: COL_W - mW - 14 });
+  doc.fillColor('#8C7B6E').font('Helvetica').fontSize(7.5)
+     .text('ASSESSORIA DE EVENTOS', textX, doc.y + 1, { width: COL_W - mW - 14, characterSpacing: 2 });
+
+  // Linha separadora
+  doc.moveTo(MARGIN, 80).lineTo(PAGE_W - MARGIN, 80).strokeColor('#E2D5C0').lineWidth(0.8).stroke();
+
+  // Nome do evento
+  doc.fillColor('#2C2420').font('Helvetica-Bold').fontSize(18)
+     .text(e.name || 'Evento', MARGIN, 88, { width: COL_W });
   if (subtitle) {
-    doc.font('Helvetica').fontSize(10).fillColor('rgba(255,255,255,0.88)')
+    doc.fillColor(`rgb(${r},${g},${b})`).font('Helvetica').fontSize(9)
        .text(subtitle, MARGIN, doc.y + 2, { width: COL_W });
   }
   const meta = [e.type, e.date ? dbr(e.date) + (e.time ? ' às ' + e.time : '') : '', e.venue]
     .filter(Boolean).join('  ·  ');
   if (meta) {
-    doc.font('Helvetica').fontSize(9).fillColor('rgba(255,255,255,0.80)')
-       .text(meta, MARGIN, doc.y + 3, { width: COL_W });
+    doc.fillColor('#8C7B6E').font('Helvetica').fontSize(8.5)
+       .text(meta, MARGIN, doc.y + 2, { width: COL_W });
   }
   if (e.clientName) {
-    doc.font('Helvetica').fontSize(9).fillColor('rgba(255,255,255,0.80)')
+    doc.fillColor('#8C7B6E').font('Helvetica').fontSize(8.5)
        .text('Cliente: ' + e.clientName + (e.clientContact ? '  ·  ' + e.clientContact : ''), MARGIN, doc.y + 2, { width: COL_W });
   }
-  doc.moveDown(0.3);
-  // badge de status
-  const badgeY = 88;
+  // Badge de status
+  const badgeY = doc.y + 4;
   const badgeText = e.status || 'Planejamento';
-  const bW = doc.widthOfString(badgeText) + 18;
-  doc.roundedRect(MARGIN, badgeY, bW, 16, 8).fill('rgba(255,255,255,0.22)');
-  doc.fillColor('#ffffff').font('Helvetica').fontSize(8).text(badgeText, MARGIN + 9, badgeY + 4);
+  const bW = doc.widthOfString(badgeText) + 16;
+  doc.roundedRect(MARGIN, badgeY, bW, 14, 7).fill(`rgb(${r},${g},${b})`);
+  doc.fillColor('#ffffff').font('Helvetica').fontSize(7).text(badgeText, MARGIN + 8, badgeY + 3.5);
+  doc.y = 130;
 }
 
 /** Linha horizontal separadora */
