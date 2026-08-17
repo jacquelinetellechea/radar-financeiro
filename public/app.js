@@ -15,8 +15,13 @@
     if (body && !isForm) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
     if (body && isForm) opts.body = body;
     const r = await fetch('/api' + path, opts);
-    if (r.status === 401) { logout(); throw new Error('Sessao expirada'); }
     const data = await r.json().catch(() => ({}));
+    // O 401 do login significa credenciais incorretas; somente uma rota protegida
+    // deve encerrar a sessao local automaticamente.
+    if (r.status === 401 && !path.startsWith('/auth/')) {
+      logout();
+      throw new Error('Sessao expirada. Entre novamente.');
+    }
     if (!r.ok) throw new Error(data.error || 'Erro na requisicao');
     return data;
   }

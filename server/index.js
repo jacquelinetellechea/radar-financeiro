@@ -65,7 +65,7 @@ app.post('/api/auth/register', (req, res) => {
   if (d.user) return bad(res, 'Ja existe um usuario cadastrado. Faca login.');
   const { email, password } = req.body || {};
   if (!email || !password || password.length < 6) return bad(res, 'Informe email e senha (min. 6 caracteres).');
-  d.user = { email: String(email).toLowerCase(), passwordHash: bcrypt.hashSync(password, 10), createdAt: new Date().toISOString() };
+  d.user = { email: String(email).trim().toLowerCase(), passwordHash: bcrypt.hashSync(password, 10), createdAt: new Date().toISOString() };
   store.saveWithBackup();
   const token = jwt.sign({ email: d.user.email }, JWT_SECRET, { expiresIn: '30d' });
   ok(res, { token, email: d.user.email });
@@ -76,7 +76,7 @@ app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body || {};
   if (!d.user) return bad(res, 'Nenhum usuario cadastrado. Crie sua conta.');
   if (!email || !password) return bad(res, 'Informe email e senha.');
-  if (String(email).toLowerCase() !== d.user.email || !bcrypt.compareSync(password, d.user.passwordHash))
+  if (String(email).trim().toLowerCase() !== String(d.user.email || '').trim().toLowerCase() || !bcrypt.compareSync(password, d.user.passwordHash))
     return bad(res, 'Credenciais invalidas.', 401);
   const token = jwt.sign({ email: d.user.email }, JWT_SECRET, { expiresIn: '30d' });
   ok(res, { token, email: d.user.email });
